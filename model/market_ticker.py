@@ -18,12 +18,12 @@ TICKER_POOL = [
 _ROOT = os.path.dirname(os.path.dirname(__file__))
 _CACHE_DIR = os.path.join(_ROOT, 'static', 'cache')
 _DAILY_FILE = os.path.join(_CACHE_DIR, 'market_ticker_daily.json')
+_LAST_GOOD_FILE = os.path.join(_CACHE_DIR, 'market_ticker_last_good.json')
 _STOCK_CACHE_DIR = os.path.join(_ROOT, 'static', 'new_cache')
 
 _FETCH_TIMEOUT = 15
 _MAX_WORKERS = 4
 _REFRESH_LOCK = threading.Lock()
-_BG_STARTED = False
 
 
 def _today_str():
@@ -84,10 +84,14 @@ def _build_daily_payload(items, trade_date=None, source='本地快照'):
 
 
 def _load_daily_file():
-    if not os.path.isfile(_DAILY_FILE):
+    return _load_payload_file(_DAILY_FILE)
+
+
+def _load_payload_file(path):
+    if not os.path.isfile(path):
         return None
     try:
-        with open(_DAILY_FILE, 'r', encoding='utf-8') as f:
+        with open(path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         if data.get('items'):
             return data
@@ -97,9 +101,13 @@ def _load_daily_file():
 
 
 def _save_daily_file(payload):
+    _save_payload_file(_DAILY_FILE, payload)
+
+
+def _save_payload_file(path, payload):
     _ensure_cache_dir()
     try:
-        with open(_DAILY_FILE, 'w', encoding='utf-8') as f:
+        with open(path, 'w', encoding='utf-8') as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f'写入每日热股失败: {e}')
@@ -130,19 +138,143 @@ def _collect_items_for_snapshot(limit=12):
     return items[:limit]
 
 
+def _priced_count(items):
+    return sum(1 for q in (items or []) if q.get('price') is not None)
+
+
+def _merge_with_previous(quotes, previous_items, limit):
+    """用旧快照补齐缺失 code，避免整排都是 --。"""
+    merged = list(quotes or [])
+    by_code = {q.get('code'): q for q in merged if q.get('code')}
+    for old in previous_items or []:
+        code = old.get('code')
+        if not code or code in by_code:
+            continue
+        if old.get('price') is None:
+            continue
+        stale = old.copy()
+        stale['status'] = 'stale'
+        merged.append(stale)
+        by_code[code] = stale
+        if len(merged) >= limit:
+            break
+    merged.sort(key=lambda x: abs(x.get('change_pct') or 0), reverse=True)
+    return merged[:limit]
+
+
+def _needs_refresh(data):
+    """判定是否需要后台刷新：日期过期或内容仍是占位。"""
+    if not data:
+        return True
+    items = data.get('items') or []
+    if not items:
+        return True
+    if data.get('trade_date') != _today_str():
+        return True
+    if _priced_count(items) < 4:
+        return True
+    source = str(data.get('source') or '')
+    if '待更新' in source:
+        return True
+    return any((q.get('status') == 'pending') for q in items)
+
+
+def _hydrate_with_local_cache(data, limit=12):
+    """用本地单股缓存补齐 pending，避免页面长期显示 --。"""
+    limit = max(4, min(int(limit or 12), 20))
+    items = list((data or {}).get('items') or [])[:limit]
+    by_code = {str(x.get('code')): x for x in items if x.get('code')}
+    changed = False
+
+    for code in TICKER_POOL:
+        if len(items) >= limit and code in by_code:
+            continue
+        cached = _quote_from_local_stock_cache(code)
+        if not cached:
+            continue
+        old = by_code.get(code)
+        if old:
+            if old.get('price') is None or old.get('status') == 'pending':
+                by_code[code] = cached
+                changed = True
+        elif len(items) < limit:
+            by_code[code] = cached
+            changed = True
+
+    if not changed:
+        return data, False
+
+    merged = list(by_code.values())
+    merged.sort(key=lambda x: abs(x.get('change_pct') or 0), reverse=True)
+    merged = merged[:limit]
+
+    out = (data or {}).copy()
+    out['items'] = merged
+    out['count'] = len(merged)
+    out['updated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    if _priced_count(merged) >= 4:
+        out['source'] = '本地缓存'
+    return out, True
+
+
 def _fetch_one_network(code: str):
     from model.network_utils import direct_connection
     with direct_connection():
         return _quote_fallback(code)
 
 
+def _fetch_batch_sina_quotes(codes):
+    """优先走新浪批量行情：一次请求，稳定性高于逐只拉取。"""
+    out = {}
+    if not codes:
+        return out
+    try:
+        import akshare as ak
+        from model.network_utils import direct_connection
+        with direct_connection():
+            spot = ak.stock_zh_a_spot()
+        code_set = set(codes)
+        for _, row in spot.iterrows():
+            raw_code = str(row.get('代码', '')).strip()
+            if not raw_code:
+                continue
+            code = raw_code[-6:].zfill(6)
+            if code not in code_set:
+                continue
+            price = _parse_price(row.get('最新价'))
+            if price is None:
+                continue
+            change_pct = _parse_change_pct(row.get('涨跌幅'))
+            name = str(row.get('名称') or STOCK_DISPLAY_NAMES.get(code, code)).strip()
+            out[code] = {
+                'code': code,
+                'name': name or STOCK_DISPLAY_NAMES.get(code, code),
+                'price': price,
+                'change_pct': change_pct,
+                'change_display': f'{change_pct:+.2f}%',
+                'status': 'ok',
+            }
+    except Exception as e:
+        print(f'新浪批量行情失败: {e}')
+    return out
+
+
 def refresh_daily_ticker(limit=12):
     """手动/后台：拉取并写入当日快照（不在页面请求里调用）。"""
     limit = max(4, min(int(limit or 12), 20))
     quotes = []
+    batch = _fetch_batch_sina_quotes(TICKER_POOL)
+    for code in TICKER_POOL:
+        q = batch.get(code)
+        if q:
+            quotes.append(q)
+
+    existing_codes = {q.get('code') for q in quotes}
+    missing_codes = [c for c in TICKER_POOL if c not in existing_codes]
+
     try:
         with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as pool:
-            futures = {pool.submit(_fetch_one_network, c): c for c in TICKER_POOL}
+            futures = {pool.submit(_fetch_one_network, c): c for c in missing_codes}
             for fut in as_completed(futures, timeout=_FETCH_TIMEOUT):
                 try:
                     q = fut.result()
@@ -161,13 +293,19 @@ def refresh_daily_ticker(limit=12):
             if q:
                 quotes.append(q)
 
-    if len(quotes) < 4:
-        old = _load_daily_file()
-        if old and old.get('items'):
-            return old
+    old = _load_daily_file()
+    last_good = _load_payload_file(_LAST_GOOD_FILE)
+    if old and old.get('items'):
+        quotes = _merge_with_previous(quotes, old.get('items'), limit)
+    if _priced_count(quotes) < 4 and last_good and last_good.get('items'):
+        quotes = _merge_with_previous(quotes, last_good.get('items'), limit)
+    if _priced_count(quotes) < 4 and old and old.get('items'):
+        return old
 
     quotes.sort(key=lambda x: abs(x.get('change_pct') or 0), reverse=True)
     payload = _build_daily_payload(quotes[:limit], trade_date=_today_str(), source='akshare/新浪')
+    if _priced_count(payload.get('items')) >= 4:
+        _save_payload_file(_LAST_GOOD_FILE, payload)
     _save_daily_file(payload)
     print(f'每日热股已更新: {payload["trade_date"]} · {len(payload["items"])} 只')
     return payload
@@ -190,6 +328,9 @@ def get_daily_ticker_for_page(limit=12):
     """供 dashboard 模板使用：只读文件，毫秒级返回。"""
     limit = max(4, min(int(limit or 12), 20))
     data = _ensure_daily_file_exists()
+    data, changed = _hydrate_with_local_cache(data, limit)
+    if changed:
+        _save_daily_file(data)
     items = (data.get('items') or [])[:limit]
     for q in items:
         q['cls'] = _tick_class(q.get('change_pct') or 0)
@@ -205,6 +346,9 @@ def market_ticker_payload(limit=12, force=False):
     if force:
         return refresh_daily_ticker(limit)
     data = _ensure_daily_file_exists()
+    data, changed = _hydrate_with_local_cache(data, limit)
+    if changed:
+        _save_daily_file(data)
     items = (data.get('items') or [])[: max(4, min(int(limit or 12), 20))]
     out = data.copy()
     out['items'] = items
@@ -214,13 +358,8 @@ def market_ticker_payload(limit=12, force=False):
 
 def schedule_daily_refresh_if_stale():
     """若快照不是今天的，后台静默更新（不阻塞用户）。"""
-    global _BG_STARTED
-    if _BG_STARTED:
-        return
-    _BG_STARTED = True
-
     data = _load_daily_file()
-    if data and data.get('trade_date') == _today_str():
+    if not _needs_refresh(data):
         return
 
     def job():

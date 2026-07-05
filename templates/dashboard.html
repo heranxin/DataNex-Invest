@@ -71,7 +71,7 @@
         </div>
     </div>
 </div>
-<p class="dash-ticker-meta text-xs text-slate-400 -mt-5 mb-6 pl-1">{{ ticker.meta }}</p>
+<p id="dashTickerMeta" class="dash-ticker-meta text-xs text-slate-400 -mt-5 mb-6 pl-1">{{ ticker.meta }}</p>
 
 <!-- 新闻情感分析（核心功能入口） -->
 <div class="dash-sentiment-hub app-card mb-8 dash-reveal" id="dash-sentiment-hub">
@@ -223,6 +223,50 @@
 <script src="{{ url_for('static', filename='js/favorite-board.js') }}?v=2"></script>
 <script>
     const newsIcons = ['fa-newspaper-o', 'fa-line-chart', 'fa-bolt', 'fa-globe', 'fa-bar-chart', 'fa-pie-chart', 'fa-bullhorn', 'fa-flag'];
+    const tickerTrack = document.getElementById('dashTickerTrack');
+    const tickerMeta = document.getElementById('dashTickerMeta');
+    let tickerBusy = false;
+
+    function tickerClass(changePct) {
+        if (changePct > 0) return 'up';
+        if (changePct < 0) return 'down';
+        return 'flat';
+    }
+
+    function renderTickerItem(q) {
+        const cls = tickerClass(Number(q.change_pct || 0));
+        const name = q.name || q.code || '--';
+        const code = q.code || '';
+        const price = q.price == null ? '--' : Number(q.price).toFixed(2);
+        const change = q.price == null ? '--' : (q.change_display || '--');
+        return (
+            '<a class="dash-tick ' + cls + '" href="/stock-chart?code=' + encodeURIComponent(code) + '">' +
+                '<b>' + name + '</b>' + price + '<em>' + change + '</em>' +
+            '</a>'
+        );
+    }
+
+    function refreshTicker(force) {
+        if (!tickerTrack || tickerBusy) return;
+        tickerBusy = true;
+        const qs = force ? '?limit=12&refresh=1' : '?limit=12';
+        fetch('/api/market-ticker' + qs, { cache: 'no-store' })
+            .then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(data => {
+                const items = data.items || [];
+                if (!items.length) return;
+                const html = items.map(renderTickerItem).join('');
+                tickerTrack.innerHTML = html + html;
+                if (tickerMeta) {
+                    tickerMeta.textContent = data.updated_hint || ('数据日期 ' + (data.trade_date || ''));
+                }
+            })
+            .catch(() => {})
+            .finally(() => { tickerBusy = false; });
+    }
 
     async function fetchHotNews() {
         const container = document.getElementById('hot-news');
@@ -272,6 +316,9 @@
         }
     }
     fetchHotNews();
+    refreshTicker(false);
+    setTimeout(function () { refreshTicker(true); }, 1200);
+    setInterval(function () { refreshTicker(false); }, 60000);
 
     (function initDashSentiment() {
         const input = document.getElementById('dashSentimentCode');
