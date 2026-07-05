@@ -1,0 +1,341 @@
+{% extends "base.html" %}
+{% block title %}主页 - 数境智投{% endblock %}
+{% block header_layout_class %}app-topbar--with-aside{% endblock %}
+{% block page_title %}投资工作台{% endblock %}
+{% block page_subtitle %}{% endblock %}
+
+{% block right_panel %}
+<aside class="user-panel-col p-6 hidden xl:block">
+    <div class="user-panel sticky top-24 dash-reveal">
+        <img class="user-panel-avatar" src="https://picsum.photos/200/200?random=1" alt="头像">
+        <h3 class="user-panel-name">{{ user.nickname or user.username }}</h3>
+        <p class="user-panel-role">数境智投用户</p>
+        <a href="{{ url_for('edit_profile') }}" class="user-panel-btn">编辑资料</a>
+        <div class="user-panel-tip">
+            <p class="user-panel-tip-label">今日提醒</p>
+            <p>炒股有风险，投资需谨慎。请结合新闻情感分析与模型预测综合判断，勿将预测结果视为投资建议。</p>
+        </div>
+        <div class="user-panel-service">
+            <i class="fa fa-line-chart"></i>
+            <div>
+                <small>平台服务</small>
+                <strong>新闻情感 · 智能预测</strong>
+            </div>
+        </div>
+    </div>
+</aside>
+{% endblock %}
+
+{% block content %}
+<!-- 欢迎横幅 -->
+<div class="dash-welcome">
+    <span class="dash-welcome-orb dash-welcome-orb-1" aria-hidden="true"></span>
+    <span class="dash-welcome-orb dash-welcome-orb-2" aria-hidden="true"></span>
+    <span class="dash-welcome-orb dash-welcome-orb-3" aria-hidden="true"></span>
+    <div class="dash-welcome-inner dash-hero-in">
+        <h2>欢迎回来，{{ user.nickname or user.username }} <span class="dash-wave" aria-hidden="true">👋</span></h2>
+        <p>一站式股票分析工作台：查询行情、管理自选、情感预测与 AI 投研助手，助您把握市场脉搏。</p>
+    </div>
+    <div class="dash-welcome-tags dash-hero-in dash-hero-in-delay">
+        <span class="dash-tag"><i class="fa fa-bolt"></i> 实时资讯</span>
+        <span class="dash-tag"><i class="fa fa-line-chart"></i> 情感预测</span>
+        <span class="dash-tag"><i class="fa fa-comments"></i> AI 助手</span>
+    </div>
+    <div class="dash-welcome-chart dash-hero-in dash-hero-in-delay2" aria-hidden="true">
+        <svg viewBox="0 0 120 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <polyline class="dash-chart-line" points="0,38 18,32 32,36 48,22 62,26 78,12 92,18 108,8 120,14" />
+            <circle class="dash-chart-dot" cx="108" cy="8" r="3" />
+        </svg>
+    </div>
+</div>
+
+<!-- 滚动行情条（每日热股快照，服务端直出，无需等待加载） -->
+<div class="dash-ticker-wrap" aria-label="每日热股">
+    <div class="dash-ticker-label" title="龙头示例股，每个交易日更新一次"><i class="fa fa-fire"></i> 热股</div>
+    <div class="dash-ticker-viewport">
+        <div class="dash-ticker-track" id="dashTickerTrack">
+            {% for q in ticker.stocks %}
+            <a class="dash-tick {{ q.cls }}" href="{{ url_for('stock_chart') }}?code={{ q.code }}">
+                <b>{{ q.name }}</b>
+                {% if q.price is not none %}{{ '%.2f'|format(q.price) }}<em>{{ q.change_display }}</em>
+                {% else %}--<em>--</em>{% endif %}
+            </a>
+            {% endfor %}
+            {% for q in ticker.stocks %}
+            <a class="dash-tick {{ q.cls }}" href="{{ url_for('stock_chart') }}?code={{ q.code }}">
+                <b>{{ q.name }}</b>
+                {% if q.price is not none %}{{ '%.2f'|format(q.price) }}<em>{{ q.change_display }}</em>
+                {% else %}--<em>--</em>{% endif %}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+<p class="dash-ticker-meta text-xs text-slate-400 -mt-5 mb-6 pl-1">{{ ticker.meta }}</p>
+
+<!-- 新闻情感分析（核心功能入口） -->
+<div class="dash-sentiment-hub app-card mb-8 dash-reveal" id="dash-sentiment-hub">
+    <div class="dash-sentiment-hub-head">
+        <div class="dash-sentiment-hub-icon"><i class="fa fa-heartbeat"></i></div>
+        <div class="flex-1">
+            <h3>新闻情感分析</h3>
+            <p>系统核心：分析公告利好/利空，预测短期走势</p>
+        </div>
+        <a href="{{ url_for('sentiment_analysis') }}" class="dash-sentiment-hub-link">进入专页 <i class="fa fa-angle-right"></i></a>
+    </div>
+    <form id="dashSentimentForm" class="dash-sentiment-hub-form">
+        <div class="relative stock-search-wrap flex-1 min-w-0">
+            <input type="text" id="dashSentimentCode" class="app-input" placeholder="输入代码或名称，如 600519、比亚迪" autocomplete="off">
+            <div id="dashSentimentSuggest" class="stock-suggest-dropdown hidden"></div>
+        </div>
+        <button type="button" id="dashBtnNewsSent" class="dash-sentiment-action primary" disabled>
+            <i class="fa fa-newspaper-o"></i> 公告情感
+        </button>
+        <button type="button" id="dashBtnPredict" class="dash-sentiment-action" disabled>
+            <i class="fa fa-magic"></i> 深度预测
+        </button>
+    </form>
+    <p id="dashSentimentErr" class="text-xs text-red-500 mt-2 hidden"></p>
+</div>
+
+<!-- 自选股盯盘（工作台摘要） -->
+<div class="dash-section-head mt-2 dash-reveal">
+    <div>
+        <h3>自选股盯盘</h3>
+        <span id="dash-fav-hint">{% if favorite_quotes and favorite_quotes|length > 0 %}{{ fav_hint }}{% elif favorite_stocks and favorite_stocks|length > 0 %}加载中...{% else %}添加自选后可在此快速盯盘{% endif %}</span>
+    </div>
+    <a href="{{ url_for('favorite_stocks') }}" class="text-sm text-primary font-medium hover:underline">管理自选 <i class="fa fa-angle-right"></i></a>
+</div>
+<div class="dash-fav-card app-card mb-8 dash-reveal">
+    <div id="dashFavoriteBoard" class="dash-fav-board" data-has-favorites="{% if favorite_stocks and favorite_stocks|length > 0 %}1{% else %}0{% endif %}">
+        {% if favorite_quotes and favorite_quotes|length > 0 %}
+            {% set quotes = favorite_quotes %}
+            {% set compact = true %}
+            {% include 'partials/fav_quote_rows.html' %}
+        {% elif favorite_stocks and favorite_stocks|length > 0 %}
+        <div class="fav-loading text-sm text-slate-400 py-6 text-center"><div class="app-spinner mr-2 inline-block"></div>加载行情中...</div>
+        {% else %}
+        <div class="dash-fav-empty">
+            <i class="fa fa-star-o"></i>
+            <p>还没有自选股，<a href="{{ url_for('favorite_stocks') }}" class="text-primary hover:underline">去添加</a></p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 功能入口 -->
+<div class="dash-section-head dash-reveal">
+    <div>
+        <h3>快捷工具</h3>
+        <span>选择功能模块，开始分析</span>
+    </div>
+</div>
+<div class="dash-tools dash-reveal">
+    <a href="{{ url_for('search') }}" class="dash-tool-card dash-stagger-item">
+        <div class="dash-tool-icon c1"><i class="fa fa-search"></i></div>
+        <div class="dash-tool-body">
+            <h4>股票查询</h4>
+            <p>实时行情、K 线图与个股资讯</p>
+        </div>
+        <i class="fa fa-chevron-right dash-tool-arrow"></i>
+    </a>
+    <a href="{{ url_for('stock_browse') }}" class="dash-tool-card dash-stagger-item">
+        <div class="dash-tool-icon c7"><i class="fa fa-th-large"></i></div>
+        <div class="dash-tool-body">
+            <h4>股票发现</h4>
+            <p>按行业浏览，不知道买什么从这里开始</p>
+        </div>
+        <i class="fa fa-chevron-right dash-tool-arrow"></i>
+    </a>
+    <a href="{{ url_for('favorite_stocks') }}" class="dash-tool-card dash-stagger-item">
+        <div class="dash-tool-icon c2"><i class="fa fa-star"></i></div>
+        <div class="dash-tool-body">
+            <h4>自选股管理</h4>
+            <p>收藏关注股票，快速跳转查询</p>
+        </div>
+        <i class="fa fa-chevron-right dash-tool-arrow"></i>
+    </a>
+    <a href="{{ url_for('transition_return_rate') }}" class="dash-tool-card dash-stagger-item">
+        <div class="dash-tool-icon c3"><i class="fa fa-percent"></i></div>
+        <div class="dash-tool-body">
+            <h4>回报率分析</h4>
+            <p>基于决策点的历史收益回测</p>
+        </div>
+        <i class="fa fa-chevron-right dash-tool-arrow"></i>
+    </a>
+    <a href="{{ url_for('sentiment_analysis') }}" class="dash-tool-card dash-tool-card-sentiment dash-stagger-item">
+        <div class="dash-tool-icon c-sentiment"><i class="fa fa-heartbeat"></i></div>
+        <div class="dash-tool-body">
+            <h4>新闻情感分析</h4>
+            <p>公告利好/利空标注与 FinBERT 走势预测</p>
+        </div>
+        <i class="fa fa-chevron-right dash-tool-arrow"></i>
+    </a>
+    <a href="{{ url_for('ai_stock_assistant') }}" class="dash-tool-card dash-stagger-item">
+        <div class="dash-tool-icon c5"><i class="fa fa-comments"></i></div>
+        <div class="dash-tool-body">
+            <h4>AI 股票助手</h4>
+            <p>智能问答，解读市场与个股</p>
+        </div>
+        <i class="fa fa-chevron-right dash-tool-arrow"></i>
+    </a>
+    <a href="#market-hot-news" class="dash-tool-card dash-tool-card-news dash-stagger-item" id="dash-hot-news-link">
+        <div class="dash-tool-icon c6"><i class="fa fa-newspaper-o"></i></div>
+        <div class="dash-tool-body">
+            <h4>热点资讯</h4>
+            <p>实时财经新闻推送，点击查看市场热点</p>
+        </div>
+        <i class="fa fa-chevron-down dash-tool-arrow"></i>
+    </a>
+</div>
+
+<!-- 市场热点 -->
+<div id="market-hot-news" class="dash-news-card dash-reveal">
+    <div class="dash-news-header">
+        <div class="dash-news-header-left">
+            <div class="dash-news-icon"><i class="fa fa-fire"></i></div>
+            <div>
+                <h2 class="text-base font-bold" style="color: var(--text-main)">市场热点</h2>
+                <p class="text-sm mt-0.5" style="color: var(--text-muted)">最新财经资讯速递</p>
+            </div>
+        </div>
+        <span id="hot-news-count" class="dash-news-badge"><span class="dash-live-dot"></span>加载中...</span>
+    </div>
+    <div id="hot-news-meta" class="dash-news-meta text-xs" style="color: var(--text-muted)"></div>
+    <div id="hot-news" class="dash-news-body">
+        <div class="flex items-center justify-center py-10 text-[#94A3B8]">
+            <div class="app-spinner mr-3"></div>
+            正在加载热点新闻...
+        </div>
+    </div>
+    <div class="dash-news-footer">
+        <a href="{{ url_for('hot_news_hub') }}" class="dash-news-more-btn">
+            <i class="fa fa-newspaper-o mr-2"></i>查看更多资讯
+            <i class="fa fa-angle-right ml-1"></i>
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard-motion.js') }}?v=5"></script>
+<script src="{{ url_for('static', filename='js/stock-search.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='js/favorite-board.js') }}?v=2"></script>
+<script>
+    const newsIcons = ['fa-newspaper-o', 'fa-line-chart', 'fa-bolt', 'fa-globe', 'fa-bar-chart', 'fa-pie-chart', 'fa-bullhorn', 'fa-flag'];
+
+    async function fetchHotNews() {
+        const container = document.getElementById('hot-news');
+        const countBadge = document.getElementById('hot-news-count');
+        const metaEl = document.getElementById('hot-news-meta');
+        try {
+            const response = await fetch('/api/hot-news?limit=10');
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
+            const data = await response.json();
+            const newsList = data.items || [];
+            container.innerHTML = '';
+            if (!newsList.length) {
+                countBadge.textContent = '共 0 条热点';
+                metaEl.textContent = '';
+                container.innerHTML = '<p class="text-sm text-slate-400 py-6 text-center">暂无热点新闻</p>';
+                return;
+            }
+            countBadge.innerHTML = '<span class="dash-live-dot"></span>共 ' + newsList.length + ' 条热点';
+            if (data.updated_at) {
+                const d = new Date(data.updated_at);
+                metaEl.textContent = (data.source || '东方财富') + ' · 更新于 ' +
+                    (isNaN(d) ? data.updated_at : d.toLocaleString('zh-CN', { hour12: false }));
+            }
+            newsList.forEach((news, index) => {
+                const num = index + 1;
+                const icon = newsIcons[index % newsIcons.length];
+                const item = document.createElement('a');
+                item.href = '/news-article?link=' + encodeURIComponent(news.link) +
+                    '&title=' + encodeURIComponent(news.title);
+                item.className = 'hot-news-item';
+                item.innerHTML =
+                    '<span class="hot-news-num">' + num + '</span>' +
+                    '<span class="hot-news-icon"><i class="fa ' + icon + '"></i></span>' +
+                    '<p class="text-sm font-medium text-slate-700 hover:text-primary transition-colors flex-1 leading-relaxed">' + news.title + '</p>' +
+                    '<i class="fa fa-angle-right text-slate-300 text-xs flex-shrink-0"></i>';
+                container.appendChild(item);
+            });
+            if (window.DashboardMotion) {
+                DashboardMotion.staggerList(container, '.hot-news-item', 0.08);
+            }
+        } catch (error) {
+            countBadge.textContent = '加载失败';
+            metaEl.textContent = '';
+            container.innerHTML = '<p class="text-sm text-red-500 py-6 text-center">无法加载热点新闻</p>';
+        }
+    }
+    fetchHotNews();
+
+    (function initDashSentiment() {
+        const input = document.getElementById('dashSentimentCode');
+        const suggest = document.getElementById('dashSentimentSuggest');
+        const errEl = document.getElementById('dashSentimentErr');
+        const btnNews = document.getElementById('dashBtnNewsSent');
+        const btnPred = document.getElementById('dashBtnPredict');
+        if (!input || typeof StockSearch === 'undefined') return;
+
+        const api = StockSearch.init({ input: input, dropdown: suggest, onSelect: updateBtns });
+        function updateBtns() {
+            const ok = input.value.trim().length > 0;
+            if (btnNews) btnNews.disabled = !ok;
+            if (btnPred) btnPred.disabled = !ok;
+            if (errEl) errEl.classList.add('hidden');
+        }
+        input.addEventListener('input', updateBtns);
+
+        async function go(path) {
+            if (errEl) errEl.classList.add('hidden');
+            try {
+                const code = await api.resolve();
+                if (code) window.location.href = path + code;
+            } catch (e) {
+                if (errEl) {
+                    errEl.textContent = e.message || '请输入有效股票';
+                    errEl.classList.remove('hidden');
+                }
+            }
+        }
+        if (btnNews) btnNews.addEventListener('click', function () { go('/stock-news?code='); });
+        if (btnPred) btnPred.addEventListener('click', function () { go('/stock-prediction?code='); });
+    })();
+
+    const dashFavBoard = document.getElementById('dashFavoriteBoard');
+    const dashFavHint = document.getElementById('dash-fav-hint');
+    if (dashFavBoard && dashFavBoard.getAttribute('data-has-favorites') === '1') {
+        FavoriteBoard.load(dashFavBoard, {
+            compact: true,
+            sort: 'change_pct',
+            background: dashFavBoard.querySelector('.fav-quote-row') != null,
+            onMeta: function (data) {
+                if (dashFavHint) dashFavHint.textContent = (data.count || 0) + ' 只自选 · ' + (data.updated_hint || '');
+            },
+            onLoaded: function (container) {
+                container.querySelectorAll('.fav-quote-row').forEach(function (row, i) {
+                    row.classList.add('dash-fav-in');
+                    row.style.animationDelay = (i * 0.06) + 's';
+                });
+            },
+        });
+    }
+
+    const hotNewsLink = document.getElementById('dash-hot-news-link');
+    if (hotNewsLink) {
+        hotNewsLink.addEventListener('click', function (e) {
+            const target = document.getElementById('market-hot-news');
+            if (target) {
+                e.preventDefault();
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                target.classList.add('dash-news-highlight');
+                setTimeout(() => target.classList.remove('dash-news-highlight'), 1600);
+            }
+        });
+    }
+</script>
+{% endblock %}

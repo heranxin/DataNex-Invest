@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+{% block title %}AI 股票助手 - 数境智投{% endblock %}
+{% block page_title %}AI 股票助手{% endblock %}
+{% block page_subtitle %}<p class="text-sm text-slate-500 mt-0.5">RAG 知识库 + 实时行情 · 权威来源 · 智能解读</p>{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto">
+    <div class="pred-disclaimer mb-4 text-xs">
+        <i class="fa fa-shield mr-1"></i>
+        AI 回答基于知识库与公开数据生成，<strong>仅供参考，不构成投资建议</strong>。重要决策请查阅官方公告或咨询持牌机构。
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <!-- 左侧：对话区 -->
+        <div class="lg:col-span-2 app-card flex flex-col" style="min-height: calc(100vh - 260px);">
+            <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center text-white">
+                        <i class="fa fa-android"></i>
+                    </div>
+                    <div>
+                        <div class="font-bold text-slate-800">数境智投 AI</div>
+                        <div class="text-xs text-slate-400">知识库 30+ 条 · 支持个股实时查询</div>
+                    </div>
+                </div>
+                <span id="modelBadge" class="text-xs px-2.5 py-1 rounded-full bg-teal-50 text-teal-600 font-medium hidden"></span>
+            </div>
+
+            <div id="chat-container" class="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-50/50" style="min-height: 380px;">
+                <div class="flex justify-start ai-msg-in">
+                    <div class="chat-bubble-ai p-4 rounded-2xl rounded-tl-md max-w-[90%] shadow-sm border border-slate-100">
+                        <div class="font-semibold text-primary text-sm mb-2"><i class="fa fa-hand-paper-o mr-1"></i> 你好！</div>
+                        <p class="text-slate-600 text-sm leading-relaxed">我是数境智投 AI 助手，已接入 <strong>A 股领域 RAG 知识库</strong>（交易规则、财务指标、行业框架等），并可查询个股实时行情与公告。</p>
+                        <p class="text-slate-500 text-xs mt-2">试试点击下方快捷问题，或直接输入。</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-4 border-t border-slate-100">
+                <div id="quickQuestions" class="flex flex-wrap gap-2 mb-3"></div>
+                <div class="flex gap-2">
+                    <input type="text" id="user-input" class="app-input flex-1" placeholder="例：什么是市盈率？分析一下 600519" maxlength="2000">
+                    <button id="send-btn" class="app-btn-primary px-6 flex items-center gap-2 flex-shrink-0">
+                        <i class="fa fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧：知识来源面板 -->
+        <div class="space-y-4">
+            <div class="app-card p-5">
+                <h3 class="font-bold text-slate-800 text-sm mb-3"><i class="fa fa-book text-primary mr-2"></i>知识库覆盖</h3>
+                <div class="space-y-2 text-xs text-slate-600">
+                    <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-teal-500"></span>交易规则（T+1、涨跌停）</div>
+                    <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>财务指标（PE、PB、ROE）</div>
+                    <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-amber-500"></span>行业框架（白酒、银行、新能源）</div>
+                    <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-purple-500"></span>风险提示与合规</div>
+                    <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-teal-500"></span>实时行情 & 东方财富公告</div>
+                </div>
+            </div>
+
+            <div class="app-card p-5">
+                <h3 class="font-bold text-slate-800 text-sm mb-3"><i class="fa fa-link text-primary mr-2"></i>本次参考来源</h3>
+                <div id="sourcesPanel" class="space-y-2 text-xs text-slate-500">
+                    <p class="text-slate-400">发送问题后，检索到的知识条目与数据来源将显示在这里。</p>
+                </div>
+            </div>
+
+            <div class="app-card p-5 bg-gradient-to-br from-slate-50 to-teal-50">
+                <h3 class="font-bold text-slate-700 text-xs mb-2"><i class="fa fa-info-circle mr-1"></i>技术说明</h3>
+                <p class="text-xs text-slate-500 leading-relaxed">
+                    检索：TF-IDF 语义匹配知识库<br>
+                    生成：SiliconFlow 大模型 API<br>
+                    个股：akshare 行情 + 东方财富公告
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/ai-markdown.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='js/ai-chat-store.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='js/ai-chat-client.js') }}?v=2"></script>
+<script>
+const QUICK = [
+    '什么是市盈率 PE？',
+    'A股涨跌停规则是什么？',
+    '贵州茅台的投资价值',
+    '分析一下 600519 贵州茅台',
+    '白酒行业怎么看？',
+    '本系统的股票预测怎么实现的？',
+];
+
+const chatContainer = document.getElementById('chat-container');
+const userInput = document.getElementById('user-input');
+const sendBtn = document.getElementById('send-btn');
+const sourcesPanel = document.getElementById('sourcesPanel');
+const modelBadge = document.getElementById('modelBadge');
+
+function getApiHistory() {
+    return typeof AiChatStore !== 'undefined' ? AiChatStore.getApiHistory() : [];
+}
+
+function persistTurn(user, answer, meta) {
+    if (typeof AiChatStore !== 'undefined') {
+        AiChatStore.addTurn(user, answer, meta || {});
+    }
+}
+
+function restoreChatFromStore() {
+    if (typeof AiChatStore === 'undefined' || !AiChatStore.hasHistory()) return;
+    chatContainer.innerHTML = '';
+    AiChatStore.getTurns().forEach(turn => {
+        addUserMsg(turn.user);
+        addAiMsg(turn.assistant, turn.meta || {});
+    });
+    renderSources(AiChatStore.getLastSources());
+    const last = AiChatStore.getTurns().slice(-1)[0];
+    if (last && last.meta && last.meta.model) {
+        modelBadge.textContent = last.meta.used_llm
+            ? last.meta.model.split('/').pop()
+            : '知识库模式';
+        modelBadge.classList.remove('hidden');
+    }
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+function escapeHtml(t) {
+    const d = document.createElement('div');
+    d.textContent = t;
+    return d.innerHTML;
+}
+
+function renderMarkdownLite(text) {
+    return typeof renderAiMarkdown === 'function'
+        ? renderAiMarkdown(text)
+        : escapeHtml(text).replace(/\n/g, '<br>');
+}
+
+function addUserMsg(text) {
+    const el = document.createElement('div');
+    el.className = 'flex justify-end ai-msg-in';
+    el.innerHTML = `<div class="chat-bubble-user p-4 rounded-2xl rounded-tr-md max-w-[85%] shadow-md"><p class="text-sm">${escapeHtml(text)}</p></div>`;
+    chatContainer.appendChild(el);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+function addThinking() {
+    const el = document.createElement('div');
+    el.id = 'thinking';
+    el.className = 'flex justify-start ai-msg-in';
+    el.innerHTML = `<div class="chat-bubble-ai p-4 rounded-2xl rounded-tl-md shadow-sm border-l-4 border-primary">
+        <div class="font-semibold text-primary text-sm mb-1">AI 助手</div>
+        <div class="flex items-center text-slate-500 text-sm">
+            <div class="flex space-x-1 mr-2">
+                <span class="thinking-dot inline-block h-2 w-2 rounded-full bg-primary"></span>
+                <span class="thinking-dot inline-block h-2 w-2 rounded-full bg-primary"></span>
+                <span class="thinking-dot inline-block h-2 w-2 rounded-full bg-primary"></span>
+            </div>
+            检索知识库并生成回答…
+        </div>
+    </div>`;
+    chatContainer.appendChild(el);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+    return el;
+}
+
+function buildAiTags(meta) {
+    let tags = '';
+    if (!meta) return tags;
+    if (meta.has_knowledge) tags += '<span class="text-xs bg-teal-50 text-teal-600 px-2 py-0.5 rounded-full mr-1">知识库</span>';
+    if (meta.has_live_data) tags += '<span class="text-xs bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full mr-1">实时数据</span>';
+    if (meta.used_llm) tags += '<span class="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full mr-1">大模型</span>';
+    return tags;
+}
+
+function createStreamingAiMsg() {
+    const el = document.createElement('div');
+    el.className = 'flex justify-start ai-msg-in';
+    el.innerHTML = `<div class="chat-bubble-ai p-4 rounded-2xl rounded-tl-md max-w-[90%] shadow-sm border border-slate-100">
+        <div class="flex items-center gap-2 mb-2">
+            <span class="font-semibold text-primary text-sm">AI 助手</span>
+            <span class="ai-stream-tags"></span>
+        </div>
+        <div class="ai-stream-body text-slate-700 text-sm leading-relaxed whitespace-pre-wrap"></div>
+    </div>`;
+    chatContainer.appendChild(el);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+    return {
+        root: el,
+        tagsEl: el.querySelector('.ai-stream-tags'),
+        bodyEl: el.querySelector('.ai-stream-body'),
+        setMeta(meta) { this.tagsEl.innerHTML = buildAiTags(meta); },
+        appendToken(token) {
+            this.bodyEl.textContent = (this.bodyEl.textContent || '') + token;
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        },
+        setFinal(text, meta) {
+            this.setMeta(meta);
+            this.bodyEl.innerHTML = renderMarkdownLite(text);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        },
+    };
+}
+
+function addAiMsg(text, meta) {
+    const el = document.createElement('div');
+    el.className = 'flex justify-start ai-msg-in';
+    el.innerHTML = `<div class="chat-bubble-ai p-4 rounded-2xl rounded-tl-md max-w-[90%] shadow-sm border border-slate-100">
+        <div class="flex items-center gap-2 mb-2">
+            <span class="font-semibold text-primary text-sm">AI 助手</span>${buildAiTags(meta)}
+        </div>
+        <div class="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">${renderMarkdownLite(text)}</div>
+    </div>`;
+    chatContainer.appendChild(el);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+function addError(msg) {
+    const el = document.createElement('div');
+    el.className = 'flex justify-start';
+    el.innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-2xl max-w-[85%] text-sm border border-red-100">${escapeHtml(msg)}</div>`;
+    chatContainer.appendChild(el);
+}
+
+function renderSources(sources) {
+    if (!sources || !sources.length) {
+        sourcesPanel.innerHTML = '<p class="text-slate-400">未检索到相关知识条目。</p>';
+        return;
+    }
+    sourcesPanel.innerHTML = sources.map(s => {
+        const link = s.link ? `href="${s.link}" target="_blank" rel="noopener"` : '';
+        const tag = s.category ? `<span class="text-teal-500">${s.category}</span> · ` : '';
+        if (link) {
+            return `<a ${link} class="block p-2.5 rounded-lg bg-slate-50 hover:bg-teal-50 transition-colors">
+                <div class="font-medium text-slate-700 line-clamp-2">${escapeHtml(s.title)}</div>
+                <div class="text-slate-400 mt-0.5">${tag}${escapeHtml(s.source || '')}</div>
+            </a>`;
+        }
+        return `<div class="p-2.5 rounded-lg bg-slate-50">
+            <div class="font-medium text-slate-700">${escapeHtml(s.title)}</div>
+            <div class="text-slate-400 mt-0.5">${tag}${escapeHtml(s.source || '')}</div>
+        </div>`;
+    }).join('');
+}
+
+document.getElementById('quickQuestions').innerHTML = QUICK.map(q =>
+    `<button type="button" class="quick-q text-xs px-3 py-1.5 rounded-full bg-teal-50 text-teal-600 hover:bg-teal-100 transition-colors border border-teal-100">${escapeHtml(q)}</button>`
+).join('');
+
+document.querySelectorAll('.quick-q').forEach(btn => {
+    btn.addEventListener('click', () => { userInput.value = btn.textContent; sendBtn.click(); });
+});
+
+async function sendMessage() {
+    const text = userInput.value.trim();
+    if (!text) return;
+
+    addUserMsg(text);
+    userInput.value = '';
+    sendBtn.disabled = true;
+    const thinking = addThinking();
+    let streamBox = null;
+
+    const finish = (answer, meta) => {
+        thinking.remove();
+        if (streamBox) streamBox.setFinal(answer, meta);
+        else addAiMsg(answer, meta);
+        renderSources(meta.sources || []);
+        persistTurn(text, answer, meta);
+        if (meta.model) {
+            modelBadge.textContent = meta.used_llm ? meta.model.split('/').pop() : '知识库模式';
+            modelBadge.classList.remove('hidden');
+        }
+        sendBtn.disabled = false;
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    };
+
+    const fail = (msg) => {
+        thinking.remove();
+        if (streamBox) streamBox.root.remove();
+        addError(msg);
+        sendBtn.disabled = false;
+    };
+
+    if (typeof requestAiChat !== 'function') {
+        fail('AI 客户端未加载，请刷新页面');
+        return;
+    }
+
+    await requestAiChat({
+        message: text,
+        history: getApiHistory(),
+        onMeta(meta) {
+            thinking.remove();
+            streamBox = createStreamingAiMsg();
+            streamBox.setMeta(meta);
+            renderSources(meta.sources || []);
+        },
+        onToken(token) {
+            if (!streamBox) {
+                thinking.remove();
+                streamBox = createStreamingAiMsg();
+            }
+            streamBox.appendToken(token);
+        },
+        onDone(data) { finish(data.answer, data); },
+        onError(msg) { fail(msg); },
+    });
+}
+
+sendBtn.addEventListener('click', sendMessage);
+userInput.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage(); });
+restoreChatFromStore();
+</script>
+<style>
+.ai-msg-in { animation: fadeUp 0.3s ease; }
+@keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+.line-clamp-2 { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+</style>
+{% endblock %}

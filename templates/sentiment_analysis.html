@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}新闻情感分析 - 数境智投{% endblock %}
+{% block page_title %}新闻情感分析{% endblock %}
+{% block page_subtitle %}<p class="text-sm text-slate-500 mt-0.5">公告舆情标注 + FinBERT 深度预测，本系统核心能力</p>{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+    <div class="sentiment-hub-hero">
+        <div class="sentiment-hub-hero-icon"><i class="fa fa-heartbeat"></i></div>
+        <div>
+            <h2>基于新闻情感的股票分析</h2>
+            <p>自动抓取个股公告，识别偏利好 / 中性 / 偏利空，并融合 FinBERT 模型预测短期走势。</p>
+        </div>
+    </div>
+
+    <div class="app-card p-8">
+        <h3 class="text-base font-bold text-neutral mb-1 flex items-center gap-2">
+            <i class="fa fa-search text-primary"></i> 选择股票开始分析
+        </h3>
+        <p class="text-xs text-slate-400 mb-5">支持代码、名称、拼音（如 600519、茅台、GZMT）</p>
+        <form id="sentimentHubForm" class="space-y-5">
+            <div class="relative stock-search-wrap">
+                <input type="text" id="sentimentStockCode" class="app-input" placeholder="输入股票代码或名称" autocomplete="off" required>
+                <div id="sentimentSuggest" class="stock-suggest-dropdown hidden"></div>
+            </div>
+            <p id="sentimentHubError" class="text-sm text-red-500 hidden"></p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button type="button" id="btnNewsSentiment" class="sentiment-hub-btn sentiment-hub-btn-primary" disabled>
+                    <i class="fa fa-newspaper-o"></i>
+                    <span>
+                        <strong>公告情感速览</strong>
+                        <small>每条公告利好/利空标签 · 综合舆情</small>
+                    </span>
+                </button>
+                <button type="button" id="btnDeepPredict" class="sentiment-hub-btn sentiment-hub-btn-secondary" disabled>
+                    <i class="fa fa-magic"></i>
+                    <span>
+                        <strong>深度情感预测</strong>
+                        <small>FinBERT + 规则 · 3 日走势</small>
+                    </span>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="sentiment-feature-card">
+            <div class="sentiment-feature-num">1</div>
+            <h4>抓取公告</h4>
+            <p>东方财富 / 新浪最新个股公告与资讯</p>
+        </div>
+        <div class="sentiment-feature-card">
+            <div class="sentiment-feature-num">2</div>
+            <h4>情感标注</h4>
+            <p>规则识别 + 机器学习情感打分</p>
+        </div>
+        <div class="sentiment-feature-card">
+            <div class="sentiment-feature-num">3</div>
+            <h4>趋势研判</h4>
+            <p>聚合情感信号，输出涨跌倾向与依据</p>
+        </div>
+    </div>
+
+    <div class="app-card p-6">
+        <p class="text-xs text-slate-400 leading-relaxed">
+            <i class="fa fa-info-circle mr-1"></i>
+            情感分析结果仅供参考，不构成投资建议。深度预测需加载模型，首次分析约需 20 秒。
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/stock-search.js') }}?v=1"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const input = document.getElementById('sentimentStockCode');
+    const suggest = document.getElementById('sentimentSuggest');
+    const errEl = document.getElementById('sentimentHubError');
+    const btnNews = document.getElementById('btnNewsSentiment');
+    const btnDeep = document.getElementById('btnDeepPredict');
+
+    const searchApi = StockSearch.init({
+        input: input,
+        dropdown: suggest,
+        onSelect: updateBtns,
+    });
+
+    function updateBtns() {
+        const ok = input.value.trim().length > 0;
+        btnNews.disabled = !ok;
+        btnDeep.disabled = !ok;
+        if (ok) errEl.classList.add('hidden');
+    }
+    input.addEventListener('input', updateBtns);
+
+    async function go(path) {
+        errEl.classList.add('hidden');
+        try {
+            const code = await searchApi.resolve();
+            if (code) window.location.href = path + code;
+        } catch (e) {
+            errEl.textContent = e.message || '请输入有效的股票';
+            errEl.classList.remove('hidden');
+        }
+    }
+
+    btnNews.addEventListener('click', function () { go('/stock-news?code='); });
+    btnDeep.addEventListener('click', function () { go('/stock-prediction?code='); });
+
+    const q = new URLSearchParams(window.location.search).get('code');
+    if (q) { input.value = q; updateBtns(); }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}股票行情 - {{ stock_code }} - 数境智投{% endblock %}
+{% block page_title %}股票行情{% endblock %}
+{% block page_subtitle %}
+<p class="text-sm text-slate-500 mt-0.5">交互式 K 线 / 折线图 · 可缩放拖动查看历史</p>
+{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+{% endblock %}
+
+{% block header_extra %}
+<a href="{{ url_for('stock_browse') }}" class="text-sm text-primary hover:underline flex items-center gap-1">
+    <i class="fa fa-th-large"></i> 股票发现
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+    <div class="chart-hero app-card p-6">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div>
+                <h2 id="chartStockTitle" class="chart-hero-title">{{ stock_code }}</h2>
+                <p class="chart-hero-code">代码 {{ stock_code }}</p>
+            </div>
+            <div id="realtimeData" class="chart-stat-grid"></div>
+        </div>
+    </div>
+
+    <div class="app-card p-6 md:p-8">
+        <div class="flex flex-wrap items-center gap-3 mb-5">
+            <div class="chart-mode-tabs">
+                <button type="button" id="lineBtn" class="chart-mode-btn active"><i class="fa fa-line-chart"></i> 折线图</button>
+                <button type="button" id="candleBtn" class="chart-mode-btn"><i class="fa fa-bar-chart"></i> K 线图</button>
+            </div>
+            <button type="button" id="updateDataBtn" class="app-btn-secondary text-sm py-2 px-4 ml-auto">
+                <i class="fa fa-refresh"></i> 刷新
+            </button>
+            <a href="/stock-news?code={{ stock_code }}" class="app-btn-secondary text-sm py-2 px-4"><i class="fa fa-heartbeat"></i> 公告情感</a>
+            <a href="/stock-prediction?code={{ stock_code }}" class="app-btn-secondary text-sm py-2 px-4"><i class="fa fa-magic"></i> 深度预测</a>
+        </div>
+
+        <div id="chartContainer" class="chart-echarts-wrap">
+            <div id="chartLoading" class="chart-echarts-loading">
+                <div class="app-spinner mb-3"></div>
+                <p class="text-sm text-slate-500">加载行情数据…</p>
+            </div>
+            <div id="stockEchart" class="chart-echarts-canvas"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/stock-chart-echarts.js') }}?v=3"></script>
+<script>
+const STOCK_CODE = {{ stock_code | tojson }};
+const lineBtn = document.getElementById('lineBtn');
+const candleBtn = document.getElementById('candleBtn');
+const updateBtn = document.getElementById('updateDataBtn');
+const loadingEl = document.getElementById('chartLoading');
+const realtimeDiv = document.getElementById('realtimeData');
+let chartState = null;
+
+function setMode(mode) {
+    lineBtn.classList.toggle('active', mode === 'line');
+    candleBtn.classList.toggle('active', mode === 'candle');
+    if (chartState) chartState.setMode(mode);
+}
+
+function renderRealtime(rt) {
+    if (!rt) return;
+    const items = [
+        { label: '最新价', value: rt['最新价'] || rt.latest || '—', highlight: true },
+        { label: '涨跌幅', value: rt['涨跌幅'] || '—', pct: true },
+        { label: '今开', value: rt['今开'] || '—' },
+        { label: '成交量', value: rt['成交量'] || '—' },
+        { label: '最高', value: rt['最高'] || '—' },
+        { label: '最低', value: rt['最低'] || '—' },
+    ];
+    realtimeDiv.innerHTML = items.map(function (it) {
+        let cls = 'chart-stat-item';
+        if (it.pct && String(it.value).includes('-')) cls += ' down';
+        else if (it.pct && String(it.value).includes('+')) cls += ' up';
+        else if (it.highlight) cls += ' primary';
+        return '<div class="' + cls + '"><span class="chart-stat-label">' + it.label + '</span><span class="chart-stat-val">' + it.value + '</span></div>';
+    }).join('');
+}
+
+function loadChart() {
+    loadingEl.classList.remove('hidden');
+    document.getElementById('stockEchart').style.visibility = 'hidden';
+    fetch('/api/stock-chart-series?code=' + encodeURIComponent(STOCK_CODE))
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) throw new Error(data.error);
+            document.getElementById('chartStockTitle').textContent = data.name + '（' + data.code + '）';
+            renderRealtime(data.realtime);
+            if (!chartState) {
+                chartState = StockChartEcharts.init('stockEchart');
+            }
+            chartState.setData(data);
+            chartState.setMode(lineBtn.classList.contains('active') ? 'line' : 'candle');
+            loadingEl.classList.add('hidden');
+            document.getElementById('stockEchart').style.visibility = 'visible';
+            setTimeout(function () { chartState.chart.resize(); }, 100);
+        })
+        .catch(function (e) {
+            loadingEl.innerHTML = '<p class="text-red-500 text-sm">' + (e.message || '加载失败') + '</p>';
+        });
+}
+
+lineBtn.addEventListener('click', function () { setMode('line'); });
+candleBtn.addEventListener('click', function () { setMode('candle'); });
+updateBtn.addEventListener('click', loadChart);
+loadChart();
+</script>
+{% endblock %}

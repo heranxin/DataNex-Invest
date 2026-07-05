@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}新闻正文 - 数境智投{% endblock %}
+{% block page_title %}新闻正文{% endblock %}
+{% block page_subtitle %}<p class="text-sm text-slate-500 mt-0.5">财经资讯详情</p>{% endblock %}
+
+{% block head_extra %}
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="newspaper-page">
+    <div class="newspaper-sheet" id="newspaper-article">
+        <header class="newspaper-masthead">
+            <div class="newspaper-masthead-ornament">✦ &nbsp; 数境智投 &nbsp; ✦</div>
+            <h1 class="newspaper-masthead-title">财经日报</h1>
+            <p class="newspaper-masthead-sub">FINANCIAL DAILY</p>
+            <div class="newspaper-edition">
+                <span id="np-date">——</span>
+                <span id="np-source">东方财富网</span>
+                <span>专刊报道</span>
+            </div>
+        </header>
+
+        <article class="newspaper-article-body" id="news-article">
+            <div class="flex items-center justify-center py-20 text-[#8B7355]">
+                <div class="app-spinner mr-3"></div> 正在排版载入...
+            </div>
+        </article>
+
+        <aside class="newspaper-related" id="np-related" hidden>
+            <h3 class="newspaper-related-title"><i class="fa fa-fire"></i> 相关热点</h3>
+            <ul class="newspaper-related-list" id="np-related-list"></ul>
+        </aside>
+
+        <footer class="newspaper-article-footer">
+            <a href="{{ url_for('hot_news_hub') }}" class="newspaper-btn-outline">
+                <i class="fa fa-newspaper-o mr-1"></i> 更多资讯
+            </a>
+            <a href="{{ url_for('dashboard') }}#market-hot-news" class="newspaper-btn-outline">
+                <i class="fa fa-arrow-left mr-1"></i> 返回工作台
+            </a>
+        </footer>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const link = {{ link|tojson }};
+    const titleHint = {{ title_hint|tojson }};
+    const container = document.getElementById('news-article');
+    const dateEl = document.getElementById('np-date');
+    const sourceEl = document.getElementById('np-source');
+    const relatedBox = document.getElementById('np-related');
+    const relatedList = document.getElementById('np-related-list');
+
+    dateEl.textContent = new Date().toLocaleDateString('zh-CN', {
+        year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
+    });
+
+    function escapeHtml(s) {
+        const d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+    }
+
+    function articleUrl(item) {
+        return '/news-article?link=' + encodeURIComponent(item.link) +
+            '&title=' + encodeURIComponent(item.title);
+    }
+
+    async function fetchNewsArticle() {
+        if (!link) {
+            container.innerHTML = '<p class="text-red-600 text-center py-12">缺少新闻链接</p>';
+            return;
+        }
+        try {
+            let url = '/api/news-article?link=' + encodeURIComponent(link);
+            if (titleHint) url += '&title=' + encodeURIComponent(titleHint);
+            const response = await fetch(url);
+            const data = await response.json();
+            if (data.error) {
+                container.innerHTML = '<p class="text-red-600 text-center py-12">' + escapeHtml(data.error) + '</p>';
+                return;
+            }
+
+            const title = data.title || titleHint || '财经资讯';
+            const meta = [data.source || '东方财富网', data.published_at].filter(Boolean).join(' · ');
+            sourceEl.textContent = data.source || '东方财富网';
+            if (data.published_at) dateEl.textContent = data.published_at;
+
+            const paragraphs = (data.paragraphs || []).map(function (p) {
+                return '<p>' + escapeHtml(p) + '</p>';
+            }).join('');
+
+            container.innerHTML =
+                '<h2 class="newspaper-article-title">' + escapeHtml(title) + '</h2>' +
+                '<div class="newspaper-meta">' + escapeHtml(meta) + '</div>' +
+                '<div class="newspaper-body">' + paragraphs + '</div>';
+
+            document.title = title + ' - 数境智投';
+
+            if (data.related && data.related.length) {
+                relatedBox.hidden = false;
+                relatedList.innerHTML = data.related.map(function (item) {
+                    return '<li><a href="' + articleUrl(item) + '">' + escapeHtml(item.title) + '</a></li>';
+                }).join('');
+            }
+        } catch (e) {
+            container.innerHTML = '<p class="text-red-600 text-center py-12">无法加载新闻正文</p>';
+        }
+    }
+
+    fetchNewsArticle();
+})();
+</script>
+{% endblock %}

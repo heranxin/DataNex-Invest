@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+
+{% block title %}公告情感分析 - 数境智投{% endblock %}
+
+{% block page_title %}公告情感分析{% endblock %}
+
+{% block page_subtitle %}<p class="text-sm text-slate-500 mt-0.5">公告情感标注 + 词云分析，一眼看懂舆情冷暖</p>{% endblock %}
+
+
+
+{% block header_extra %}
+
+<a href="{{ url_for('sentiment_analysis') }}" class="text-sm text-primary hover:underline flex items-center gap-1">
+
+    <i class="fa fa-arrow-left"></i> 返回情感分析
+
+</a>
+
+{% endblock %}
+
+
+
+{% block content %}
+
+<div class="max-w-3xl mx-auto space-y-6">
+
+    <div class="app-card p-6 flex flex-wrap gap-6 items-start justify-between">
+
+        <div class="flex flex-wrap gap-6">
+
+            <div>
+
+                <p class="text-xs text-slate-400 mb-1">股票代码</p>
+
+                <p id="stock-code-display" class="text-xl font-bold text-primary bg-teal-50 px-5 py-2 rounded-xl"></p>
+
+            </div>
+
+            <div>
+
+                <p class="text-xs text-slate-400 mb-1">股票类型</p>
+
+                <p id="stock-type-display" class="text-xl font-bold text-primary bg-teal-50 px-5 py-2 rounded-xl"></p>
+
+            </div>
+
+        </div>
+
+        <a id="goPrediction" href="#" class="app-btn-secondary text-sm py-2 px-4 hidden">
+
+            <i class="fa fa-magic mr-1"></i> 深度情感预测
+
+        </a>
+
+    </div>
+
+
+
+    <div id="sentimentSummary" class="sentiment-summary-card hidden"></div>
+
+
+
+    <div class="app-card p-8">
+
+        <h2 class="text-lg font-bold text-neutral mb-2 flex items-center gap-2">
+
+            <i class="fa fa-heartbeat text-primary"></i> 公告情感分析
+
+        </h2>
+
+        <p class="text-xs text-slate-400 mb-6">基于公告标题的规则情感 + 可选 FinBERT 模型（深度预测页启用完整模型）</p>
+
+        <div id="newsLoading" class="text-center py-12">
+
+            <div class="app-spinner mx-auto mb-4"></div>
+
+            <p class="text-slate-500">正在获取公告并分析情感<span class="loading-dots"></span></p>
+
+        </div>
+
+        <div id="newsError" class="text-center py-12 hidden">
+
+            <i class="fa fa-exclamation-triangle text-red-400 text-3xl mb-4"></i>
+
+            <p class="text-red-600 mb-3">获取新闻失败</p>
+
+            <button onclick="loadNews()" class="app-btn-primary text-sm">重试</button>
+
+        </div>
+
+        <div id="newsList" class="space-y-3 hidden"></div>
+
+        <div id="noNews" class="text-center py-12 hidden text-slate-400">
+
+            <i class="fa fa-newspaper-o text-4xl mb-3 block opacity-40"></i>暂无相关新闻
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}
+
+
+
+{% block scripts %}
+
+<script>
+
+function getStockCodeFromURL() {
+
+    return new URLSearchParams(window.location.search).get('code');
+
+}
+
+
+
+function sentimentTagClass(tone) {
+
+    if (tone === 'bullish') return 'sent-tag-bullish';
+
+    if (tone === 'bearish') return 'sent-tag-bearish';
+
+    return 'sent-tag-neutral';
+
+}
+
+
+
+function ruleTagClass(type) {
+
+    const m = { routine: 'sent-rule-routine', bullish: 'sent-rule-bullish', bearish: 'sent-rule-bearish' };
+
+    return m[type] || 'sent-rule-general';
+
+}
+
+
+
+function renderSentimentSummary(summary) {
+
+    const el = document.getElementById('sentimentSummary');
+
+    if (!summary || !summary.meter) { el.classList.add('hidden'); return; }
+
+    const m = summary.meter;
+
+    const stars = '★'.repeat(m.stars) + '☆'.repeat(5 - m.stars);
+
+    el.innerHTML = `
+
+        <div class="sentiment-summary-inner tone-${m.tone}">
+
+            <div class="sentiment-summary-left">
+
+                <div class="sentiment-summary-label">综合舆情</div>
+
+                <div class="sentiment-summary-title">${m.label}</div>
+
+                <div class="sentiment-summary-stars" aria-hidden="true">${stars}</div>
+
+                <p class="sentiment-summary-desc">${summary.overall_text || ''} · 共分析 ${summary.total} 条</p>
+
+            </div>
+
+            <div class="sentiment-summary-right">
+
+                <div class="sentiment-meter">
+
+                    <div class="sentiment-meter-fill tone-${m.tone}" style="width:${m.pct}%"></div>
+
+                    <div class="sentiment-meter-marker" style="left:${m.pct}%"></div>
+
+                </div>
+
+                <div class="sentiment-meter-labels"><span>悲观</span><span>中性</span><span>乐观</span></div>
+
+                <div class="sentiment-stats">
+
+                    <span class="sent-stat sent-stat-up">利好 ${summary.bullish || 0}</span>
+
+                    <span class="sent-stat sent-stat-mid">中性 ${summary.routine || 0}</span>
+
+                    <span class="sent-stat sent-stat-down">利空 ${summary.bearish || 0}</span>
+
+                </div>
+
+            </div>
+
+        </div>`;
+
+    el.classList.remove('hidden');
+
+}
+
+
+
+function showLoading() {
+
+    document.getElementById('newsLoading').classList.remove('hidden');
+
+    document.getElementById('newsError').classList.add('hidden');
+
+    document.getElementById('newsList').classList.add('hidden');
+
+    document.getElementById('noNews').classList.add('hidden');
+
+}
+
+function hideLoading() { document.getElementById('newsLoading').classList.add('hidden'); }
+
+function showError() {
+
+    hideLoading();
+
+    document.getElementById('newsError').classList.remove('hidden');
+
+}
+
+
+
+function showNewsList(newsList) {
+
+    const container = document.getElementById('newsList');
+
+    container.innerHTML = '';
+
+    newsList.forEach((news, idx) => {
+
+        const meter = news.meter || {};
+
+        const tone = meter.tone || 'neutral';
+
+        const item = document.createElement('div');
+
+        item.className = 'sent-news-card slide-up';
+
+        item.innerHTML =
+
+            '<div class="sent-news-card-top">' +
+
+                '<span class="sent-news-idx">#' + (idx + 1) + '</span>' +
+
+                '<span class="sent-tag ' + ruleTagClass(news.rule_type) + '">' + (news.rule_label || '一般') + '</span>' +
+
+                '<span class="sent-tag ' + sentimentTagClass(tone) + '">' + (meter.label || '中性') + '</span>' +
+
+                '<span class="sent-score">' + (news.sentiment != null ? news.sentiment : '—') + '</span>' +
+
+            '</div>' +
+
+            '<a href="/news-wordcloud?url=' + encodeURIComponent(news.link) + '&title=' + encodeURIComponent(news.title) + '&from=stock-news&code=' + encodeURIComponent(getStockCodeFromURL() || '') + '" class="sent-news-title">' + news.title + '</a>' +
+
+            '<div class="sent-news-foot">' +
+
+                '<span><i class="fa fa-cloud mr-1"></i>词云</span>' +
+
+                '<span class="sent-mini-meter"><span class="sent-mini-fill tone-' + tone + '" style="width:' + (meter.pct || 50) + '%"></span></span>' +
+
+            '</div>';
+
+        container.appendChild(item);
+
+    });
+
+    container.classList.remove('hidden');
+
+}
+
+
+
+function showNoNews() { document.getElementById('noNews').classList.remove('hidden'); }
+
+
+
+function loadNews() {
+
+    const stockCode = getStockCodeFromURL();
+
+    if (!stockCode) { showError(); return; }
+
+    document.getElementById('stock-code-display').textContent = stockCode;
+
+    const predLink = document.getElementById('goPrediction');
+
+    predLink.href = '/stock-prediction?code=' + encodeURIComponent(stockCode);
+
+    predLink.classList.remove('hidden');
+
+    showLoading();
+
+    fetch('/api/stock-news-utils?code=' + encodeURIComponent(stockCode))
+
+        .then(r => r.json())
+
+        .then(data => {
+
+            hideLoading();
+
+            document.getElementById('stock-type-display').textContent = data.stock_type || '-';
+
+            if (data.error) { showError(); return; }
+
+            renderSentimentSummary(data.sentiment_summary);
+
+            if (data.news && data.news.length > 0) showNewsList(data.news);
+
+            else showNoNews();
+
+        })
+
+        .catch(() => showError());
+
+}
+
+loadNews();
+
+</script>
+
+{% endblock %}
+

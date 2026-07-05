@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 数境智投</title>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --teal: #00B5AD;
+            --teal-light: #2DD4BF;
+            --teal-dark: #0D9488;
+            --teal-deep: #0F766E;
+            --cyan-glow: #5EEAD4;
+            --navy: #0C4A6E;
+            --text: #134E4A;
+            --text-muted: #5F7A78;
+            --white: #FFFFFF;
+            --border: rgba(13, 148, 136, 0.15);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; }
+
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', 'Inter', system-ui, sans-serif;
+            color: var(--text);
+            overflow: hidden;
+        }
+
+        .login-page {
+            position: relative;
+            min-height: 100vh;
+            min-height: 100dvh;
+            display: grid;
+            grid-template-columns: 1.15fr minmax(460px, 560px);
+            align-items: stretch;
+        }
+
+        /* 全屏背景 */
+        .login-bg {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            background: #e8f7f6 url("{{ url_for('static', filename='images/login-bg.png') }}") center/cover no-repeat;
+        }
+
+        /* 左侧留白展示背景图表 */
+        .login-visual {
+            position: relative;
+            z-index: 1;
+            grid-column: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 40px 48px 52px;
+            pointer-events: none;
+        }
+
+        .brand-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 20px 10px 12px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.88);
+            border: 1px solid rgba(0, 181, 173, 0.25);
+            box-shadow: 0 4px 24px rgba(0, 181, 173, 0.15);
+            pointer-events: auto;
+            width: fit-content;
+        }
+        .brand-pill img { width: 38px; height: 38px; object-fit: contain; }
+        .brand-pill span {
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--teal-deep);
+            letter-spacing: 0.5px;
+        }
+
+        .visual-tagline {
+            max-width: 480px;
+            pointer-events: auto;
+            padding: 28px 32px;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.94);
+            border: 1px solid rgba(255, 255, 255, 0.9);
+            box-shadow: 0 12px 40px rgba(12, 74, 110, 0.12), 0 2px 8px rgba(0, 181, 173, 0.1);
+            backdrop-filter: blur(12px);
+        }
+        .visual-tagline h2 {
+            font-size: 36px;
+            font-weight: 800;
+            color: #0C4A6E;
+            line-height: 1.3;
+            margin-bottom: 14px;
+        }
+        .visual-tagline p {
+            font-size: 16px;
+            color: #475569;
+            line-height: 1.75;
+        }
+
+        /* 右侧登录区 */
+        .login-side {
+            position: relative;
+            z-index: 2;
+            grid-column: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 64px 40px 24px;
+            background: linear-gradient(
+                90deg,
+                rgba(255, 255, 255, 0) 0%,
+                rgba(255, 255, 255, 0.6) 10%,
+                rgba(255, 255, 255, 0.98) 100%
+            );
+        }
+
+        .login-card {
+            width: 100%;
+            max-width: 460px;
+            padding: 52px 48px 48px;
+            background: var(--white);
+            border-radius: 32px;
+            border: 1px solid var(--border);
+            box-shadow:
+                0 0 0 1px rgba(255,255,255,0.8) inset,
+                0 24px 60px rgba(0, 181, 173, 0.14),
+                0 12px 32px rgba(12, 74, 110, 0.08);
+        }
+
+        .card-top {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .card-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 22px;
+            border-radius: 18px;
+            background: linear-gradient(145deg, var(--teal-light) 0%, var(--teal) 50%, var(--teal-dark) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 28px;
+            box-shadow: 0 10px 28px rgba(0, 181, 173, 0.45);
+        }
+        .card-top h1 {
+            font-size: 30px;
+            font-weight: 800;
+            color: var(--navy);
+            margin-bottom: 8px;
+        }
+        .card-top p {
+            font-size: 15px;
+            color: var(--text-muted);
+        }
+
+        .field { margin-bottom: 22px; }
+        .field label {
+            display: block;
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 10px;
+        }
+        .field-box {
+            display: flex;
+            align-items: center;
+            height: 56px;
+            padding: 0 18px;
+            background: #F0FDFA;
+            border: 1.5px solid #CCFBF1;
+            border-radius: 16px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        .field-box:focus-within {
+            background: #fff;
+            border-color: var(--teal);
+            box-shadow: 0 0 0 3px rgba(0, 181, 173, 0.18);
+        }
+        .field-box i {
+            color: var(--teal-dark);
+            font-size: 17px;
+            margin-right: 14px;
+            opacity: 0.75;
+        }
+        .field-box input {
+            flex: 1;
+            border: none;
+            background: transparent;
+            font-size: 16px;
+            color: var(--text);
+            outline: none;
+        }
+        .field-box input::placeholder { color: #94A3B8; }
+
+        .row-opt {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 26px 0 32px;
+            font-size: 14px;
+        }
+        .row-opt label {
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+        .row-opt a {
+            color: var(--teal-dark);
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .row-opt a:hover { color: var(--teal); }
+
+        /* 同款青绿登录按钮 */
+        .btn-login {
+            width: 100%;
+            height: 58px;
+            border: none;
+            border-radius: 16px;
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 4px;
+            color: #fff;
+            cursor: pointer;
+            background: linear-gradient(135deg, #2DD4BF 0%, #00B5AD 45%, #0D9488 100%);
+            box-shadow: 0 6px 20px rgba(0, 181, 173, 0.45), 0 2px 6px rgba(13, 148, 136, 0.3);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 28px rgba(0, 181, 173, 0.5);
+        }
+        .btn-login:active { transform: translateY(0); }
+
+        .hint-reg {
+            text-align: center;
+            margin-top: 28px;
+            font-size: 15px;
+            color: var(--text-muted);
+        }
+        .hint-reg a {
+            color: var(--teal-dark);
+            font-weight: 700;
+            text-decoration: none;
+        }
+        .hint-reg a:hover { color: var(--teal); }
+
+        .hint-reg a:hover { color: var(--teal); }
+
+        .dev-reset-wrap {
+            margin-top: 20px;
+            padding-top: 18px;
+            border-top: 1px dashed #CCFBF1;
+            text-align: center;
+        }
+        .dev-reset-wrap p {
+            font-size: 12px;
+            color: #94A3B8;
+            margin-bottom: 8px;
+        }
+        .btn-dev-reset {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #B45309;
+            background: #FFFBEB;
+            border: 1px solid #FDE68A;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .btn-dev-reset:hover {
+            background: #FEF3C7;
+            border-color: #FCD34D;
+        }
+        .success-box {
+            background: #F0FDFA;
+            border: 1px solid #99F6E4;
+            color: #0F766E;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: 13px;
+            text-align: center;
+            margin-bottom: 16px;
+        }
+        .modal-warn {
+            background: #FEF2F2;
+            border: 1px solid #FECACA;
+            border-radius: 12px;
+            padding: 12px 14px;
+            font-size: 13px;
+            color: #B91C1C;
+            line-height: 1.6;
+            margin-bottom: 18px;
+        }
+        .modal-warn strong { display: block; margin-bottom: 4px; }
+        .btn-danger {
+            flex: 1;
+            height: 46px;
+            border-radius: 14px;
+            border: none;
+            background: linear-gradient(135deg, #F87171, #DC2626);
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-danger:hover { filter: brightness(1.05); }
+        .btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        .error-box {
+            background: #FEF2F2;
+            border: 1px solid #FECACA;
+            color: #DC2626;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: 13px;
+            text-align: center;
+            margin-bottom: 16px;
+        }
+
+        /* 弹窗 */
+        .modal-mask {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: rgba(12, 74, 110, 0.45);
+            backdrop-filter: blur(6px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-mask.open { display: flex; }
+        .modal-box {
+            background: #fff;
+            border-radius: 24px;
+            padding: 36px;
+            width: 100%;
+            max-width: 400px;
+            margin: 20px;
+            border: 1px solid var(--border);
+            box-shadow: 0 24px 60px rgba(0, 181, 173, 0.15);
+        }
+        .modal-box h2 {
+            text-align: center;
+            font-size: 20px;
+            color: var(--navy);
+            margin-bottom: 8px;
+        }
+        .modal-box .sub {
+            text-align: center;
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 24px;
+        }
+        .modal-actions { display: flex; gap: 12px; margin-top: 8px; }
+        .btn-ghost {
+            flex: 1;
+            height: 46px;
+            border-radius: 14px;
+            border: 1.5px solid #CCFBF1;
+            background: #F0FDFA;
+            color: var(--text-muted);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+        .btn-ghost:hover { border-color: var(--teal); color: var(--teal-dark); }
+        .modal-actions .btn-login { flex: 1; height: 46px; letter-spacing: 0; font-size: 14px; }
+
+        @media (max-width: 960px) {
+            body { overflow: auto; }
+            .login-page {
+                grid-template-columns: 1fr;
+                min-height: 100dvh;
+            }
+            .login-visual {
+                padding: 24px 20px 0;
+                min-height: auto;
+            }
+            .visual-tagline { display: none; }
+            .login-side {
+                grid-column: 1;
+                padding: 24px 20px 40px;
+                background: linear-gradient(180deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.95) 30%);
+            }
+            .login-card { max-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-bg" aria-hidden="true"></div>
+
+    <div class="login-page">
+        <div class="login-visual">
+            <div class="brand-pill">
+                <img src="{{ url_for('static', filename='images/logo.png') }}?v=2" alt="数境智投">
+                <span>数境智投</span>
+            </div>
+            <div class="visual-tagline">
+                <h2>智能洞察<br>股市脉搏</h2>
+                <p>融合新闻情感分析与 AI 投研助手，为您提供清晰、可溯源的市场参考。</p>
+            </div>
+        </div>
+
+        <div class="login-side">
+            <div class="login-card">
+                <div class="card-top">
+                    <div class="card-icon"><i class="fa fa-sign-in"></i></div>
+                    <h1>账号登录</h1>
+                    <p>欢迎回到数境智投</p>
+                </div>
+
+                <form method="post" autocomplete="off">
+                    <div class="field">
+                        <label for="username">用户名</label>
+                        <div class="field-box">
+                            <i class="fa fa-user"></i>
+                            <input type="text" id="username" name="username" required placeholder="请输入用户名">
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="password">密码</label>
+                        <div class="field-box">
+                            <i class="fa fa-lock"></i>
+                            <input type="password" id="password" name="password" required placeholder="请输入密码">
+                        </div>
+                    </div>
+                    <div class="row-opt">
+                        <label><input type="checkbox" name="remember"> 记住我</label>
+                        <a href="#" onclick="showForgotPassword(); return false;">忘记密码？</a>
+                    </div>
+                    {% if error %}
+                    <div class="error-box">{{ error }}</div>
+                    {% endif %}
+                    {% if reset_success %}
+                    <div class="success-box">{{ reset_success }}</div>
+                    {% endif %}
+                    <button type="submit" class="btn-login">登 录</button>
+                </form>
+
+                <div class="hint-reg">
+                    还没有账号？<a href="{{ url_for('register') }}">立即注册</a>
+                </div>
+
+                <div class="dev-reset-wrap">
+                    <p>开发测试专用</p>
+                    <button type="button" class="btn-dev-reset" onclick="showResetModal()">
+                        <i class="fa fa-refresh"></i> 初始化（清空全部账户）
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="resetUsersModal" class="modal-mask">
+        <div class="modal-box">
+            <h2>确认初始化？</h2>
+            <p class="sub">此操作仅用于本地测试新手引导</p>
+            <div class="modal-warn">
+                <strong>将永久删除：</strong>
+                所有注册用户、自选股记录及登录状态。清空后请重新注册，首次登录会弹出使用指南。
+            </div>
+            <div id="resetMessage" class="hidden" style="margin-bottom:8px;font-size:13px;text-align:center;"></div>
+            <div class="modal-actions">
+                <button type="button" onclick="hideResetModal()" class="btn-ghost">取消</button>
+                <button type="button" id="btnConfirmReset" class="btn-danger" onclick="confirmResetUsers()">确认清空</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="forgotPasswordModal" class="modal-mask">
+        <div class="modal-box">
+            <h2>重置密码</h2>
+            <p class="sub">请输入用户名与注册邮箱</p>
+            <form id="forgotPasswordForm">
+                <div class="field">
+                    <label for="resetUsername">用户名</label>
+                    <div class="field-box">
+                        <i class="fa fa-user"></i>
+                        <input type="text" id="resetUsername" name="username" required placeholder="请输入用户名">
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="resetEmail">邮箱</label>
+                    <div class="field-box">
+                        <i class="fa fa-envelope"></i>
+                        <input type="email" id="resetEmail" name="email" required placeholder="请输入注册邮箱">
+                    </div>
+                </div>
+                <div id="resetMessage" class="hidden" style="margin-bottom:8px;font-size:13px;text-align:center;"></div>
+                <div class="modal-actions">
+                    <button type="button" onclick="hideForgotPassword()" class="btn-ghost">取消</button>
+                    <button type="submit" class="btn-login">发送</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function showResetModal() {
+            document.getElementById('resetMessage').classList.add('hidden');
+            document.getElementById('btnConfirmReset').disabled = false;
+            document.getElementById('resetUsersModal').classList.add('open');
+        }
+        function hideResetModal() {
+            document.getElementById('resetUsersModal').classList.remove('open');
+            document.getElementById('resetMessage').classList.add('hidden');
+        }
+        function confirmResetUsers() {
+            const btn = document.getElementById('btnConfirmReset');
+            const msg = document.getElementById('resetMessage');
+            btn.disabled = true;
+            msg.textContent = '正在清空...';
+            msg.style.color = '#0D9488';
+            msg.classList.remove('hidden');
+            fetch('/api/dev/reset-users', { method: 'POST', credentials: 'same-origin' })
+                .then(r => r.json().then(data => ({ ok: r.ok, data })))
+                .then(({ ok, data }) => {
+                    if (ok && data.success) {
+                        hideResetModal();
+                        window.location.href = '{{ url_for("login") }}?reset=1';
+                    } else {
+                        msg.textContent = data.error || '初始化失败';
+                        msg.style.color = '#DC2626';
+                        btn.disabled = false;
+                    }
+                })
+                .catch(() => {
+                    msg.textContent = '网络错误';
+                    msg.style.color = '#DC2626';
+                    btn.disabled = false;
+                });
+        }
+        document.getElementById('resetUsersModal').addEventListener('click', function(e) {
+            if (e.target === this) hideResetModal();
+        });
+
+        function showForgotPassword() {
+            document.getElementById('forgotPasswordModal').classList.add('open');
+        }
+        function hideForgotPassword() {
+            document.getElementById('forgotPasswordModal').classList.remove('open');
+            document.getElementById('resetMessage').classList.add('hidden');
+            document.getElementById('forgotPasswordForm').reset();
+        }
+        document.getElementById('forgotPasswordModal').addEventListener('click', function(e) {
+            if (e.target === this) hideForgotPassword();
+        });
+        document.getElementById('forgotPasswordForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const username = document.getElementById('resetUsername').value;
+            const email = document.getElementById('resetEmail').value;
+            const msg = document.getElementById('resetMessage');
+            msg.textContent = '正在发送...';
+            msg.style.color = '#0D9488';
+            msg.classList.remove('hidden');
+            fetch('/forgot-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'username=' + encodeURIComponent(username) + '&email=' + encodeURIComponent(email)
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    msg.textContent = data.success;
+                    msg.style.color = '#16A34A';
+                    setTimeout(hideForgotPassword, 3000);
+                } else {
+                    msg.textContent = data.error || '发送失败';
+                    msg.style.color = '#DC2626';
+                }
+            })
+            .catch(() => {
+                msg.textContent = '网络错误';
+                msg.style.color = '#DC2626';
+            });
+        });
+    </script>
+</body>
+</html>

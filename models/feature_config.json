@@ -1,0 +1,6 @@
+{
+  "mode": "hybrid_tfidf_finbert",
+  "tfidf_max_features": 3000,
+  "finbert_weight": 0.8,
+  "rule_feature": true
+}

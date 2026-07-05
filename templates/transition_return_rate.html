@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}回报率分析 - 数境智投{% endblock %}
+{% block page_title %}回报率分析{% endblock %}
+{% block page_subtitle %}
+<p class="text-sm text-slate-500 mt-0.5">假设在某个日期买入，回看之后一段时间赚了多少——帮你复盘「如果当时买了会怎样」</p>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+    <div class="sentiment-hub-hero rr-hub-hero">
+        <div class="sentiment-hub-hero-icon"><i class="fa fa-percent"></i></div>
+        <div>
+            <h2>历史收益回测</h2>
+            <p>
+                选一个<strong>决策点</strong>（例如某次公告发布日、你打算买入的那天），系统会画出
+                <strong>从那天持有至今的累计回报率曲线</strong>，直观看到「当时进场」后的盈亏走势。
+            </p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="sentiment-feature-card">
+            <div class="sentiment-feature-num">1</div>
+            <h4>选股票</h4>
+            <p>输入 6 位代码或名称，如 600519、比亚迪</p>
+        </div>
+        <div class="sentiment-feature-card">
+            <div class="sentiment-feature-num">2</div>
+            <h4>选决策点</h4>
+            <p>在交易日列表里选一个「假设买入」的日期</p>
+        </div>
+        <div class="sentiment-feature-card">
+            <div class="sentiment-feature-num">3</div>
+            <h4>看曲线</h4>
+            <p>绿线表示相对买入价的累计回报率（%）</p>
+        </div>
+    </div>
+
+    <div class="app-card p-8">
+        <h3 class="text-base font-bold text-neutral mb-1 flex items-center gap-2">
+            <i class="fa fa-line-chart text-primary"></i> 开始回测
+        </h3>
+        <p class="text-xs text-slate-400 mb-5">支持代码、名称、拼音搜索</p>
+        <form id="returnRateForm" class="space-y-5">
+            <div class="relative stock-search-wrap">
+                <input type="text" id="returnRateStockInput" class="app-input" placeholder="输入股票代码或名称，如 600519" autocomplete="off" required>
+                <div id="returnRateSuggest" class="stock-suggest-dropdown hidden"></div>
+            </div>
+            <p id="returnRateErr" class="text-sm text-red-500 hidden"></p>
+
+            <div class="rr-quick-picks">
+                <span class="rr-quick-label">快捷试试：</span>
+                <button type="button" class="rr-quick-chip" data-code="600519">600519 茅台</button>
+                <button type="button" class="rr-quick-chip" data-code="002594">002594 比亚迪</button>
+                <button type="button" class="rr-quick-chip" data-code="000001">000001 平安银行</button>
+            </div>
+
+            <button type="submit" id="returnRateSubmit" class="app-btn-primary w-full flex items-center justify-center gap-2 text-base py-3.5" disabled>
+                <i class="fa fa-line-chart"></i> 查看回报率曲线
+            </button>
+        </form>
+    </div>
+
+    <div class="app-card p-6">
+        <h4 class="text-sm font-bold text-neutral mb-3 flex items-center gap-2">
+            <i class="fa fa-lightbulb-o text-primary"></i> 和情感分析有什么区别？
+        </h4>
+        <div class="rr-compare-grid">
+            <div class="rr-compare-item">
+                <span class="rr-compare-tag primary">情感分析</span>
+                <p>看<strong>公告消息</strong>偏利好还是利空，预测短期走势方向。</p>
+            </div>
+            <div class="rr-compare-item">
+                <span class="rr-compare-tag secondary">回报率分析</span>
+                <p>看<strong>历史价格</strong>：假设某天买入，之后实际涨跌幅是多少。</p>
+            </div>
+        </div>
+        <p class="text-xs text-slate-400 mt-4 leading-relaxed">
+            <i class="fa fa-info-circle mr-1"></i>
+            回测基于历史收盘价，不含手续费与分红；结果仅供参考，不构成投资建议。
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/stock-search.js') }}?v=1"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const input = document.getElementById('returnRateStockInput');
+    const suggest = document.getElementById('returnRateSuggest');
+    const errEl = document.getElementById('returnRateErr');
+    const submitBtn = document.getElementById('returnRateSubmit');
+    const form = document.getElementById('returnRateForm');
+
+    const searchApi = StockSearch.init({
+        input: input,
+        dropdown: suggest,
+        onSelect: updateBtn,
+    });
+
+    function updateBtn() {
+        submitBtn.disabled = !input.value.trim();
+        if (input.value.trim()) errEl.classList.add('hidden');
+    }
+    input.addEventListener('input', updateBtn);
+
+    document.querySelectorAll('.rr-quick-chip').forEach(function (chip) {
+        chip.addEventListener('click', function () {
+            input.value = chip.dataset.code;
+            updateBtn();
+            input.focus();
+        });
+    });
+
+    form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        errEl.classList.add('hidden');
+        try {
+            const code = await searchApi.resolve();
+            if (code) window.location.href = '/return-rate?code=' + encodeURIComponent(code);
+        } catch (err) {
+            errEl.textContent = err.message || '请输入有效的 A 股代码';
+            errEl.classList.remove('hidden');
+        }
+    });
+
+    const q = new URLSearchParams(window.location.search).get('code');
+    if (q) { input.value = q; updateBtn(); }
+});
+</script>
+{% endblock %}

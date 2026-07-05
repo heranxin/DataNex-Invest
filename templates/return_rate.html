@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+
+{% block title %}回报率 - {{ stock_code }} - 数境智投{% endblock %}
+
+{% block page_title %}回报率回测{% endblock %}
+
+{% block page_subtitle %}
+
+<p class="text-sm text-slate-500 mt-0.5">
+
+    股票 <span class="font-semibold text-primary">{{ stock_code }}</span> · 选择决策点查看持有收益曲线
+
+</p>
+
+{% endblock %}
+
+
+
+{% block head_extra %}
+
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+
+{% endblock %}
+
+
+
+{% block header_extra %}
+
+<a href="{{ url_for('transition_return_rate') }}?code={{ stock_code }}" class="text-sm text-primary hover:underline flex items-center gap-1">
+
+    <i class="fa fa-arrow-left"></i> 换一只股票
+
+</a>
+
+{% endblock %}
+
+
+
+{% block content %}
+
+<div class="max-w-5xl mx-auto space-y-6">
+
+    <div class="rr-result-hero app-card p-6">
+
+        <div class="flex flex-wrap items-start gap-4 justify-between">
+
+            <div>
+
+                <span class="rr-result-badge"><i class="fa fa-percent mr-1"></i>历史回测</span>
+
+                <h2 class="rr-result-title" id="rr-stock-name">加载中…</h2>
+
+                <p class="rr-result-desc">
+
+                    若在<strong>决策点当天收盘价</strong>买入并持有，曲线表示相对买入价的<strong>累计回报率</strong>。
+
+                    红点=买入日，蓝点=最新交易日；悬停可看每日收盘价与回报。
+
+                </p>
+
+            </div>
+
+            <div class="rr-stat-pills" id="rr-stat-pills" hidden>
+
+                <div class="rr-stat-pill">
+
+                    <span class="rr-stat-label">决策点</span>
+
+                    <span class="rr-stat-value" id="rr-stat-date">—</span>
+
+                </div>
+
+                <div class="rr-stat-pill">
+
+                    <span class="rr-stat-label">买入价</span>
+
+                    <span class="rr-stat-value" id="rr-stat-buy">—</span>
+
+                </div>
+
+                <div class="rr-stat-pill">
+
+                    <span class="rr-stat-label">累计回报</span>
+
+                    <span class="rr-stat-value" id="rr-stat-return">—</span>
+
+                </div>
+
+                <div class="rr-stat-pill">
+
+                    <span class="rr-stat-label">区间</span>
+
+                    <span class="rr-stat-value" id="rr-stat-days">—</span>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+
+    <div class="app-card p-6 md:p-8">
+
+        <div class="flex flex-wrap items-end gap-4 mb-6">
+
+            <div class="flex-1 min-w-[200px]">
+
+                <label for="decision-point" class="block text-sm font-semibold text-slate-700 mb-2">
+
+                    <i class="fa fa-calendar text-primary mr-1"></i> 选择决策点（假设买入日）
+
+                </label>
+
+                <select id="decision-point" class="app-input max-w-md"></select>
+
+            </div>
+
+            <p class="text-xs text-slate-400 flex-1 min-w-[180px]">
+
+                切换日期可对比「不同进场时机」的持有收益差异
+
+            </p>
+
+        </div>
+
+
+
+        <div id="return-rate-chart-container" class="rr-chart-panel rr-chart-echarts-wrap">
+
+            <div id="rrChartLoading" class="rr-chart-loading">
+
+                <div class="app-spinner mb-3"></div>
+
+                <p class="text-sm text-slate-500">正在加载回报率曲线…</p>
+
+            </div>
+
+            <div id="returnRateEchart" class="rr-echarts-canvas"></div>
+
+            <p id="rr-chart-err" class="rr-chart-err hidden">图表加载失败，请换决策点或稍后重试</p>
+
+        </div>
+
+        <p id="rr-formula-hint" class="text-xs text-slate-400 mt-3 hidden"></p>
+
+    </div>
+
+
+
+    <div class="grid md:grid-cols-2 gap-4">
+
+        <div class="rr-tip-card">
+
+            <i class="fa fa-arrow-up text-primary"></i>
+
+            <div>
+
+                <strong>曲线在 0% 线上方</strong>
+
+                <p>表示相对买入价整体盈利；下方则为亏损区间。</p>
+
+            </div>
+
+        </div>
+
+        <div class="rr-tip-card">
+
+            <i class="fa fa-heartbeat text-primary"></i>
+
+            <div>
+
+                <strong>可结合情感分析</strong>
+
+                <p>在公告发布日设决策点，对照当时舆情与后续走势是否一致。</p>
+
+                <a href="/stock-news?code={{ stock_code }}" class="text-xs text-primary hover:underline mt-1 inline-block">去看公告情感 →</a>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}
+
+
+
+{% block scripts %}
+
+<script src="{{ url_for('static', filename='js/return-rate-chart.js') }}?v=2"></script>
+
+<script>
+
+const STOCK_CODE = {{ stock_code | tojson }};
+
+const decisionPointSelect = document.getElementById('decision-point');
+
+const loadingEl = document.getElementById('rrChartLoading');
+
+const chartEl = document.getElementById('returnRateEchart');
+
+const errEl = document.getElementById('rr-chart-err');
+
+const statPills = document.getElementById('rr-stat-pills');
+
+const formulaHint = document.getElementById('rr-formula-hint');
+
+let rrChart = null;
+
+
+
+function showLoading() {
+    loadingEl.classList.remove('hidden');
+    errEl.classList.add('hidden');
+}
+
+function hideLoading(ok) {
+    loadingEl.classList.add('hidden');
+    if (ok) {
+        errEl.classList.add('hidden');
+    } else {
+        errEl.classList.remove('hidden');
+    }
+}
+
+function updateStats(data) {
+    document.getElementById('rr-stock-name').textContent = data.name + '（' + data.code + '）';
+    document.getElementById('rr-stat-date').textContent = data.decision_point;
+    document.getElementById('rr-stat-buy').textContent = data.initial_price + ' 元';
+    var ret = data.total_return_pct;
+    var retEl = document.getElementById('rr-stat-return');
+    retEl.textContent = (ret >= 0 ? '+' : '') + ret.toFixed(2) + '%';
+    retEl.style.color = ret >= 0 ? '#DC2626' : '#16A34A';
+    document.getElementById('rr-stat-days').textContent = data.trading_days + ' 个交易日';
+    statPills.hidden = false;
+    formulaHint.textContent = '计算：(' + data.current_price + ' − ' + data.initial_price + ') ÷ ' +
+        data.initial_price + ' × 100% = ' + (ret >= 0 ? '+' : '') + ret.toFixed(2) + '%（未含手续费）';
+    formulaHint.classList.remove('hidden');
+}
+
+function updateReturnRateChart(decisionPoint) {
+    showLoading();
+    fetch('/api/return-rate-series?code=' + encodeURIComponent(STOCK_CODE) +
+        '&decision_point=' + encodeURIComponent(decisionPoint))
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.error || !data.points) throw new Error(data.error || '无数据');
+            hideLoading(true);
+            if (!rrChart) rrChart = ReturnRateChart.init(chartEl);
+            ReturnRateChart.render(rrChart, data);
+            updateStats(data);
+        })
+        .catch(function () { hideLoading(false); });
+}
+
+
+
+fetch('/api/decision-points?code=' + encodeURIComponent(STOCK_CODE))
+
+    .then(function (res) { return res.json(); })
+
+    .then(function (data) {
+
+        if (!data || !data.length) {
+
+            decisionPointSelect.innerHTML = '<option>暂无交易日数据</option>';
+
+            hideLoading(false);
+
+            return;
+
+        }
+
+        data.forEach(function (point) {
+
+            var option = document.createElement('option');
+
+            option.value = point;
+
+            option.textContent = point;
+
+            decisionPointSelect.appendChild(option);
+
+        });
+
+        updateReturnRateChart(decisionPointSelect.options[0].value);
+
+    })
+
+    .catch(function () { hideLoading(false); });
+
+
+
+decisionPointSelect.addEventListener('change', function () {
+
+    updateReturnRateChart(this.value);
+
+});
+
+</script>
+
+{% endblock %}
+
+

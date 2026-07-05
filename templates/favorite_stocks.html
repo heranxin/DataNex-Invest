@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}自选股 - 数境智投{% endblock %}
+
+{% block page_title %}自选股盯盘{% endblock %}
+
+{% block page_subtitle %}<p class="text-sm text-slate-500 mt-0.5">实时行情一览，支持名称/代码添加与涨跌幅排序</p>{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+    <div class="app-card p-6 sm:p-8">
+        <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+            <div class="flex items-center gap-3">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+                    <i class="fa fa-star text-white text-xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-lg font-bold text-neutral">我的自选</h2>
+                    <p class="text-sm text-slate-500">共 <span id="favCount">{{ favorite_quotes|length if favorite_quotes else stocks|length }}</span> 只 · <span id="favQuoteHint">{% if favorite_quotes %}本地缓存 · 后台更新{% else %}行情加载中{% endif %}</span></p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <label class="text-xs text-slate-500">排序</label>
+                <select id="favSort" class="app-input py-2 text-sm w-auto">
+                    <option value="change_pct">涨跌幅</option>
+                    <option value="name">名称</option>
+                    <option value="code">代码</option>
+                </select>
+                <button type="button" id="favRefresh" class="app-btn-secondary py-2 px-3 text-sm" title="刷新行情">
+                    <i class="fa fa-refresh"></i>
+                </button>
+            </div>
+        </div>
+
+        <form id="addStockForm" class="flex gap-0 mb-8 stock-search-wrap relative">
+            <input type="text" id="newStockCode" class="app-input rounded-r-none flex-1" placeholder="输入代码或名称，如 宁德时代、000012" autocomplete="off">
+            <div id="addStockSuggest" class="stock-suggest-dropdown hidden"></div>
+            <button type="submit" class="app-btn-primary rounded-l-none px-8 flex-shrink-0">
+                <i class="fa fa-plus mr-1"></i> 添加
+            </button>
+        </form>
+        <p id="favAddHint" class="text-xs text-primary -mt-6 mb-6 hidden"></p>
+
+        <div id="favoriteBoard" class="fav-board" data-has-favorites="{% if stocks and stocks|length > 0 %}1{% else %}0{% endif %}">
+            {% if favorite_quotes and favorite_quotes|length > 0 %}
+                {% set quotes = favorite_quotes %}
+                {% set compact = false %}
+                {% include 'partials/fav_quote_rows.html' %}
+            {% elif stocks and stocks|length > 0 %}
+            <div class="fav-loading"><div class="app-spinner mr-2"></div>加载行情中...</div>
+            {% else %}
+            <div class="text-center py-16 text-slate-400">
+                <i class="fa fa-star-o text-4xl mb-3 block opacity-40"></i>
+                暂无收藏股票，请在上方添加
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/stock-search.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='js/favorite-board.js') }}?v=2"></script>
+<script>
+(function () {
+    const board = document.getElementById('favoriteBoard');
+    const sortSel = document.getElementById('favSort');
+    const refreshBtn = document.getElementById('favRefresh');
+    const favCount = document.getElementById('favCount');
+    const favQuoteHint = document.getElementById('favQuoteHint');
+    const favAddHint = document.getElementById('favAddHint');
+    const addInput = document.getElementById('newStockCode');
+    const addSuggest = document.getElementById('addStockSuggest');
+
+    const addSearch = StockSearch.init({
+        input: addInput,
+        dropdown: addSuggest,
+    });
+
+    function showAddHint(text) {
+        if (!favAddHint) return;
+        favAddHint.textContent = text;
+        favAddHint.classList.remove('hidden');
+        clearTimeout(showAddHint._t);
+        showAddHint._t = setTimeout(function () {
+            favAddHint.classList.add('hidden');
+        }, 3200);
+    }
+
+    function loadBoard(opts) {
+        if (!board) return;
+        FavoriteBoard.load(board, {
+            sort: sortSel.value,
+            background: opts && opts.background,
+            onMeta: function (data) {
+                favCount.textContent = data.count || 0;
+                favQuoteHint.textContent = data.updated_hint || '已更新';
+            },
+            emptyHtml: '<div class="text-center py-16 text-slate-400"><i class="fa fa-star-o text-4xl mb-3 block opacity-40"></i>暂无收藏股票，请在上方添加</div>',
+            onRemoved: function () { loadBoard(); },
+        });
+    }
+
+    sortSel.addEventListener('change', function () { loadBoard(); });
+    refreshBtn.addEventListener('click', function () { loadBoard(); });
+
+    document.getElementById('addStockForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const raw = addInput.value.trim();
+        if (!raw) return;
+        let code = raw;
+        try {
+            if (!/^\d{6}$/.test(raw)) {
+                code = await addSearch.resolve();
+            }
+        } catch (err) {
+            alert(err.message || '无法识别股票');
+            return;
+        }
+        fetch('/api/add-favorite-stock?code=' + encodeURIComponent(code), { method: 'POST' })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    addInput.value = '';
+                    board.setAttribute('data-has-favorites', '1');
+                    if (data.duplicate) {
+                        showAddHint(data.message || '该股票已在自选列表中，已刷新列表');
+                    } else {
+                        showAddHint('已添加 ' + (data.name || data.code));
+                    }
+                    loadBoard({ background: false });
+                } else {
+                    alert(data.error || '添加失败');
+                }
+            })
+            .catch(function () {
+                alert('添加失败，请稍后重试');
+            });
+    });
+
+    if (board && board.getAttribute('data-has-favorites') === '1') {
+        loadBoard({ background: board.querySelector('.fav-quote-row') != null });
+    }
+})();
+</script>
+{% endblock %}

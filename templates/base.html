@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}数境智投{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=19">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#00B5AD',
+                        'primary-dark': '#0D9488',
+                        'primary-light': '#2DD4BF',
+                        secondary: '#14B8A6',
+                        neutral: '#134E4A',
+                        'page-bg': '#F0FAF9',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    {% block head_extra %}{% endblock %}
+</head>
+<body class="app-body min-h-screen {% block body_class %}{% endblock %}">
+    {% set ep = request.endpoint or '' %}
+    <div id="sidebar-overlay" class="sidebar-overlay"></div>
+
+    <div class="flex min-h-screen">
+        <!-- 左侧导航 -->
+        <aside id="app-sidebar" class="app-sidebar flex flex-col py-6">
+            <a href="{{ url_for('dashboard') }}" class="sidebar-brand flex items-center gap-3 px-4 mb-8 min-h-[52px]">
+                <img src="{{ url_for('static', filename='images/logo.png') }}?v=2" alt="数境智投" class="sidebar-logo flex-shrink-0">
+                <span class="nav-label font-bold text-white text-lg">数境智投</span>
+            </a>
+
+            <nav class="flex-1 space-y-1">
+                <a href="{{ url_for('dashboard') }}" class="sidebar-nav-item {% if ep == 'dashboard' %}active{% endif %}">
+                    <i class="fa fa-home"></i><span class="nav-label">主页</span>
+                </a>
+                <a href="{{ url_for('search') }}" class="sidebar-nav-item {% if ep == 'search' %}active{% endif %}">
+                    <i class="fa fa-search"></i><span class="nav-label">股票查询</span>
+                </a>
+                <a href="{{ url_for('stock_browse') }}" class="sidebar-nav-item {% if ep == 'stock_browse' %}active{% endif %}">
+                    <i class="fa fa-th-large"></i><span class="nav-label">股票发现</span>
+                </a>
+                <a href="{{ url_for('sentiment_analysis') }}" class="sidebar-nav-item {% if ep in ['sentiment_analysis', 'stock_news', 'stock_prediction', 'news_wordcloud'] %}active{% endif %}">
+                    <i class="fa fa-heartbeat"></i><span class="nav-label">情感分析</span>
+                </a>
+                <a href="{{ url_for('favorite_stocks') }}" class="sidebar-nav-item {% if ep == 'favorite_stocks' %}active{% endif %}">
+                    <i class="fa fa-star"></i><span class="nav-label">自选股</span>
+                </a>
+                <a href="{{ url_for('transition_return_rate') }}" class="sidebar-nav-item {% if ep in ['transition_return_rate', 'return_rate_page'] %}active{% endif %}">
+                    <i class="fa fa-percent"></i><span class="nav-label">回报率</span>
+                </a>
+                <a href="{{ url_for('ai_stock_assistant') }}" class="sidebar-nav-item {% if ep == 'ai_stock_assistant' %}active{% endif %}">
+                    <i class="fa fa-comments"></i><span class="nav-label">AI助手</span>
+                </a>
+            </nav>
+
+            <div class="mt-auto pt-4 border-t border-white/10">
+                <a href="#" id="open-user-guide" class="sidebar-nav-item">
+                    <i class="fa fa-graduation-cap"></i><span class="nav-label">使用指南</span>
+                </a>
+                <a href="{{ url_for('profile') }}" class="sidebar-nav-item {% if ep in ['profile', 'edit_profile'] %}active{% endif %}">
+                    <i class="fa fa-user"></i><span class="nav-label">个人资料</span>
+                </a>
+                <a href="{{ url_for('logout') }}" class="sidebar-nav-item">
+                    <i class="fa fa-sign-out"></i><span class="nav-label">退出登录</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <div class="flex-1 flex flex-col min-w-0">
+            <!-- 顶栏 -->
+            <header class="app-topbar bg-white/85 backdrop-blur-md sticky top-0 z-30 border-b border-teal-100 {% block header_layout_class %}{% endblock %}">
+                <div class="app-topbar-leading flex items-center gap-4 min-w-0">
+                    <button id="sidebar-toggle" class="lg:hidden text-primary p-2 rounded-lg hover:bg-teal-50">
+                        <i class="fa fa-bars text-xl"></i>
+                    </button>
+                    <div class="min-w-0">
+                        <h1 class="text-xl font-bold text-neutral">{% block page_title %}数境智投{% endblock %}</h1>
+                        {% block page_subtitle %}<p class="text-sm text-slate-500 mt-0.5">智能股票分析与预测平台</p>{% endblock %}
+                    </div>
+                </div>
+                <div class="app-topbar-trailing">
+                    <div class="app-topbar-actions flex items-center gap-4">
+                        {% block header_extra %}{% endblock %}
+                    </div>
+                    <div class="app-topbar-user relative">
+                        <button type="button" id="user-menu-button" class="app-topbar-user-btn flex items-center gap-2 rounded-full pl-1 pr-3 py-1 hover:bg-teal-50 transition-colors">
+                            <img class="h-9 w-9 rounded-full ring-2 ring-teal-200" src="https://picsum.photos/200/200?random=1" alt="头像">
+                            <span class="app-topbar-user-name text-sm font-medium text-slate-700 hidden sm:block">
+                                {% if current_user %}{{ current_user.nickname or current_user.username }}{% else %}用户{% endif %}
+                            </span>
+                            <i class="fa fa-chevron-down app-topbar-user-caret text-xs text-slate-400"></i>
+                        </button>
+                        <div class="hidden absolute right-0 mt-2 w-48 rounded-xl shadow-lg py-1 bg-white ring-1 ring-black/5 z-50" id="user-menu">
+                            <a href="{{ url_for('profile') }}" class="block px-4 py-2.5 text-sm text-gray-700 hover:bg-teal-50 rounded-lg mx-1">
+                                <i class="fa fa-user mr-2 text-primary"></i>个人资料
+                            </a>
+                            <a href="{{ url_for('edit_profile') }}" class="block px-4 py-2.5 text-sm text-gray-700 hover:bg-teal-50 rounded-lg mx-1">
+                                <i class="fa fa-pencil mr-2 text-primary"></i>编辑资料
+                            </a>
+                            <a href="#" id="open-user-guide-menu" class="block px-4 py-2.5 text-sm text-gray-700 hover:bg-teal-50 rounded-lg mx-1">
+                                <i class="fa fa-graduation-cap mr-2 text-primary"></i>使用指南
+                            </a>
+                            <a href="{{ url_for('logout') }}" class="block px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-lg mx-1">
+                                <i class="fa fa-sign-out mr-2"></i>退出登录
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- 页面内容 -->
+            <div class="flex-1 flex">
+                <main class="flex-1 p-6 lg:p-8 overflow-auto">
+                    {% block content %}{% endblock %}
+                </main>
+
+                {% block right_panel %}{% endblock %}
+            </div>
+
+            <footer class="px-6 py-4 text-center text-sm text-slate-400 border-t border-teal-100/60">
+                © 2026 数境智投 · 炒股有风险，投资需谨慎
+            </footer>
+        </div>
+    </div>
+
+    {% if current_user %}
+    <div id="onboarding-overlay" class="onboarding-overlay hidden" aria-hidden="true" role="dialog" aria-labelledby="onboarding-title" data-auto-show="{% if show_onboarding %}1{% else %}0{% endif %}">
+        <div class="onboarding-panel">
+            <div class="onboarding-panel-head">
+                <div>
+                    <p class="onboarding-kicker"><i class="fa fa-graduation-cap"></i> 新手指南</p>
+                    <h2 id="onboarding-title">3 分钟上手数境智投</h2>
+                </div>
+                <button type="button" id="onboarding-skip" class="onboarding-skip">跳过</button>
+            </div>
+
+            <div class="onboarding-body">
+                <div class="onboarding-step active" data-step="0">
+                    <div class="onboarding-illus onboarding-illus-welcome">
+                        <i class="fa fa-line-chart"></i>
+                    </div>
+                    <h3>欢迎，{{ current_user.nickname or current_user.username }}！</h3>
+                    <p>数境智投是一套面向 <strong>A 股</strong> 的智能分析平台，把<strong>公告舆情、情感预测、自选盯盘和 AI 投研</strong>整合在一个工作台里，帮你更快读懂个股消息。</p>
+                    <ul class="onboarding-list">
+                        <li><i class="fa fa-check-circle"></i> 不用懂代码，输入股票名称即可</li>
+                        <li><i class="fa fa-check-circle"></i> 适合刚入门、想先看公告再决策的股民</li>
+                    </ul>
+                </div>
+
+                <div class="onboarding-step" data-step="1">
+                    <div class="onboarding-illus"><i class="fa fa-compass"></i></div>
+                    <h3>先认识左侧菜单</h3>
+                    <p>登录后主要在这些页面之间切换：</p>
+                    <div class="onboarding-grid">
+                        <div class="onboarding-mini-card"><i class="fa fa-home"></i><span>主页</span><small>工作台总览</small></div>
+                        <div class="onboarding-mini-card"><i class="fa fa-search"></i><span>股票查询</span><small>代码/名称搜索</small></div>
+                        <div class="onboarding-mini-card"><i class="fa fa-heartbeat"></i><span>情感分析</span><small>核心功能入口</small></div>
+                        <div class="onboarding-mini-card"><i class="fa fa-star"></i><span>自选股</span><small>收藏与盯盘</small></div>
+                        <div class="onboarding-mini-card"><i class="fa fa-comments"></i><span>AI 助手</span><small>随时提问</small></div>
+                    </div>
+                </div>
+
+                <div class="onboarding-step" data-step="2">
+                    <div class="onboarding-illus"><i class="fa fa-heartbeat"></i></div>
+                    <h3>核心：新闻情感分析</h3>
+                    <p>在<strong>主页</strong>或<strong>情感分析</strong>页输入股票，例如 <code>600519</code> 或 <code>比亚迪</code>，然后选择：</p>
+                    <div class="onboarding-flow">
+                        <div class="onboarding-flow-item">
+                            <span class="onboarding-flow-num">1</span>
+                            <div>
+                                <strong>公告情感速览</strong>
+                                <p>每条公告标注偏利好 / 中性 / 偏利空，可点标题看<strong>词云</strong>抓重点。</p>
+                            </div>
+                        </div>
+                        <div class="onboarding-flow-item">
+                            <span class="onboarding-flow-num">2</span>
+                            <div>
+                                <strong>深度情感预测</strong>
+                                <p>FinBERT 模型融合公告情感，给出近 3 日走势参考（模型弱时会红色提示）。</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="onboarding-step" data-step="3">
+                    <div class="onboarding-illus"><i class="fa fa-star"></i></div>
+                    <h3>自选股 & 热点资讯</h3>
+                    <p><strong>自选股</strong>：在股票查询页加入自选，主页会显示盯盘摘要。</p>
+                    <p><strong>热点资讯</strong>：工作台下方有东方财富网友点击榜，可跳转「更多资讯」读报纸风详情。</p>
+                    <div class="onboarding-tip-box">
+                        <i class="fa fa-lightbulb-o"></i>
+                        建议先把常看的 3～5 只股票加进自选，每天打开工作台扫一眼。
+                    </div>
+                </div>
+
+                <div class="onboarding-step" data-step="4">
+                    <div class="onboarding-illus"><i class="fa fa-comments"></i></div>
+                    <h3>AI 助手随时可用</h3>
+                    <p>右下角悬浮按钮可打开 <strong>AI 投资助手</strong>，支持问 A 股规则、财务指标，并结合实时行情与公告作答。</p>
+                    <div class="onboarding-warn">
+                        <i class="fa fa-exclamation-triangle"></i>
+                        <div>
+                            <strong>风险提示</strong>
+                            <p>本平台所有分析、预测与 AI 回复仅供参考，<strong>不构成投资建议</strong>。股市有风险，请独立判断。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="onboarding-step" data-step="5">
+                    <div class="onboarding-illus onboarding-illus-done"><i class="fa fa-trophy"></i></div>
+                    <h3>推荐第一次这样用</h3>
+                    <ol class="onboarding-path">
+                        <li>在主页搜索一只股票（如 <strong>002594 比亚迪</strong>）</li>
+                        <li>点 <strong>公告情感</strong>，浏览标签和词云</li>
+                        <li>需要更深入时，再点 <strong>深度预测</strong></li>
+                        <li>满意就 <strong>加入自选股</strong>，以后从主页盯盘</li>
+                    </ol>
+                    <p class="onboarding-replay-hint">之后可随时在左侧 <strong>使用指南</strong> 重新打开本教程。</p>
+                </div>
+            </div>
+
+            <div class="onboarding-foot">
+                <div class="onboarding-dots" aria-hidden="true">
+                    {% for i in range(6) %}
+                    <span class="onboarding-dot{% if i == 0 %} active{% endif %}"></span>
+                    {% endfor %}
+                </div>
+                <span id="onboarding-step-label" class="onboarding-step-label">1 / 6</span>
+                <div class="onboarding-actions">
+                    <button type="button" id="onboarding-prev" class="onboarding-btn-ghost hidden"><i class="fa fa-angle-left mr-1"></i> 上一步</button>
+                    <button type="button" id="onboarding-next" class="onboarding-btn-primary">下一步 <i class="fa fa-angle-right ml-1"></i></button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if ep != 'ai_stock_assistant' %}
+    <!-- 悬浮 AI 助手 -->
+    <button type="button" id="ai-fab" class="ai-fab" aria-label="打开 AI 投资助手">
+        <span class="ai-fab-label">AI 投资助手</span>
+        <i class="fa fa-comments"></i>
+    </button>
+    <div id="ai-drawer-overlay" class="ai-drawer-overlay" aria-hidden="true"></div>
+    <aside id="ai-drawer" class="ai-drawer" aria-label="AI 对话面板">
+        <div class="ai-drawer-header">
+            <div class="ai-drawer-header-left">
+                <div class="ai-drawer-icon"><i class="fa fa-android"></i></div>
+                <div>
+                    <div class="font-bold text-slate-800 text-sm">数境智投 AI</div>
+                    <div class="text-[11px] text-slate-400">知识库 · 实时行情</div>
+                </div>
+            </div>
+            <div class="flex items-center gap-1">
+                <a href="{{ url_for('ai_stock_assistant') }}" class="ai-drawer-full-link" title="全屏打开">
+                    <i class="fa fa-expand"></i> 全屏
+                </a>
+                <button type="button" id="ai-drawer-close" class="ai-drawer-close" aria-label="关闭">
+                    <i class="fa fa-times"></i>
+                </button>
+            </div>
+        </div>
+        <p class="ai-drawer-disclaimer">
+            <i class="fa fa-shield"></i> 仅供参考，不构成投资建议
+        </p>
+        <div id="aiw-chat-container" class="ai-drawer-chat">
+            <div class="flex justify-start ai-msg-in">
+                <div class="chat-bubble-ai p-3 rounded-2xl rounded-tl-md max-w-[92%] shadow-sm border border-slate-100">
+                    <div class="font-semibold text-primary text-xs mb-1"><i class="fa fa-hand-paper-o"></i> 你好！</div>
+                    <p class="text-slate-600 text-xs leading-relaxed">我是 AI 投资助手，可解答 A 股规则、财务指标，并查询个股行情与公告。在任何页面都能向我提问。</p>
+                </div>
+            </div>
+        </div>
+        <details class="ai-drawer-sources" open>
+            <summary><i class="fa fa-link text-primary"></i> 参考来源</summary>
+            <div id="aiw-sources-panel" class="mt-2 space-y-1">
+                <p class="text-slate-400 text-xs">提问后将显示知识库与数据来源</p>
+            </div>
+        </details>
+        <div class="ai-drawer-footer">
+            <p id="aiw-context-hint" class="aiw-context-hint hidden"></p>
+            <div id="aiw-quick-questions" class="aiw-quick-questions"></div>
+            <div class="ai-drawer-input-row">
+                <input type="text" id="aiw-input" class="app-input flex-1" placeholder="输入问题…" maxlength="2000" autocomplete="off">
+                <button type="button" id="aiw-send-btn" class="app-btn-primary" aria-label="发送">
+                    <i class="fa fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+    </aside>
+    <script src="{{ url_for('static', filename='js/ai-markdown.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/ai-chat-store.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/ai-chat-client.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/ai-widget.js') }}?v=5"></script>
+    {% endif %}
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% if current_user %}
+    <script src="{{ url_for('static', filename='js/onboarding.js') }}"></script>
+    <script>
+        document.getElementById('open-user-guide-menu')?.addEventListener('click', function (e) {
+            e.preventDefault();
+            document.getElementById('open-user-guide')?.click();
+        });
+    </script>
+    {% endif %}
+    {% block scripts %}{% endblock %}
+</body>
+</html>

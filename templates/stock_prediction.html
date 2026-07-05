@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+{% block title %}股票预测 - 数境智投{% endblock %}
+{% block page_title %}股票预测 · 深度情感{% endblock %}
+{% block page_subtitle %}<p class="text-sm text-slate-500 mt-0.5">FinBERT + 规则融合，预测未来 3 个交易日走势</p>{% endblock %}
+
+{% block content %}
+<div class="pred-page">
+    <div class="pred-disclaimer mb-5">
+        <i class="fa fa-shield mr-2"></i>
+        <strong>免责声明：</strong>本系统预测由机器学习模型自动生成，<strong>仅供参考，不构成投资建议</strong>。股市有风险，投资需谨慎。
+    </div>
+
+    <div class="app-card p-8 mb-5">
+        <form id="predictionForm" class="space-y-5">
+            <div>
+                <label for="stockCode" class="block text-sm font-semibold text-slate-700 mb-2">
+                    <i class="fa fa-search mr-1 text-primary"></i> 股票代码
+                </label>
+                <div class="flex gap-3 flex-col sm:flex-row">
+                    <input type="text" id="stockCode" name="stockCode" class="app-input flex-1" placeholder="请输入 6 位 A 股代码，如 600519" maxlength="6" required>
+                    <button type="submit" class="app-btn-primary flex items-center justify-center gap-2 px-8 py-3.5 whitespace-nowrap">
+                        <i class="fa fa-line-chart"></i> 开始预测
+                    </button>
+                </div>
+                <p class="mt-2 text-xs text-slate-400">支持沪深主板、创业板、科创板全部 A 股代码</p>
+            </div>
+        </form>
+
+        <div id="loadingState" class="mt-10 hidden text-center py-8">
+            <div class="app-spinner mx-auto mb-4"></div>
+            <p class="text-slate-500 font-medium">正在获取公告并分析，首次约需 20 秒…</p>
+            <p class="text-xs text-slate-400 mt-1">数据来源：东方财富 / 新浪财经</p>
+        </div>
+    </div>
+
+    <div id="predictionResult" class="hidden"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const stockCodeInput = document.getElementById('stockCode');
+stockCodeInput.addEventListener('input', function() {
+    this.value = this.value.replace(/[^0-9]/g, '');
+});
+
+const urlCode = new URLSearchParams(window.location.search).get('code');
+if (urlCode && /^\d{6}$/.test(urlCode)) stockCodeInput.value = urlCode;
+
+function confClass(level) {
+    if (level === '高') return 'pred-conf-high';
+    if (level === '低') return 'pred-conf-low';
+    return 'pred-conf-mid';
+}
+
+function trendClass(key) {
+    if (key === 'up') return 'pred-trend-up';
+    if (key === 'down') return 'pred-trend-down';
+    return 'pred-trend-flat';
+}
+
+function trendIcon(key, trendLabel) {
+    if (key === 'up') return 'fa-arrow-up';
+    if (key === 'down') return 'fa-arrow-down';
+    if (trendLabel && trendLabel.indexOf('偏强') >= 0) return 'fa-arrow-up';
+    if (trendLabel && trendLabel.indexOf('偏空') >= 0) return 'fa-arrow-down';
+    if (trendLabel && trendLabel.indexOf('偏多') >= 0) return 'fa-arrow-up';
+    return 'fa-minus';
+}
+
+function renderLowModelBanner(p) {
+    if (!p.model_weak && !p.usage_hint) return '';
+    const r2 = p.model_r2 != null ? Number(p.model_r2).toFixed(2) : '—';
+    const hint = p.usage_hint || '模型解释力有限，预测仅供辅助参考';
+    const code = p.stock_code || '';
+    const newsLink = code
+        ? '<a href="/stock-news?code=' + encodeURIComponent(code) + '" class="pred-r2-alert-link"><i class="fa fa-heartbeat mr-1"></i>去看公告情感速览</a>'
+        : '';
+    return `<div class="pred-r2-alert">
+        <div class="pred-r2-alert-icon"><i class="fa fa-exclamation-triangle"></i></div>
+        <div class="pred-r2-alert-body">
+            <strong>模型解释力提示</strong>
+            <p>${hint}</p>
+            <p class="pred-r2-alert-meta">当前情感模型 R² = ${r2} · 置信度 ${p.confidence_level || '—'}</p>
+            ${newsLink}
+        </div>
+    </div>`;
+}
+
+function ruleTagClass(type) {
+    const m = { routine: 'pred-tag-routine', bullish: 'pred-tag-bullish', bearish: 'pred-tag-bearish' };
+    return m[type] || 'pred-tag-general';
+}
+
+function dirTagClass(key) {
+    const m = { up: 'pred-tag-up', down: 'pred-tag-down' };
+    return m[key] || 'pred-tag-flat';
+}
+
+function renderDayBars(changes) {
+    if (!changes || !changes.length) return '';
+    const max = Math.max(...changes.map(Math.abs), 0.5);
+    return changes.map((v, i) => {
+        const pct = Math.min(Math.abs(v) / max * 100, 100);
+        const cls = v >= 0 ? 'pos' : 'neg';
+        const sign = v >= 0 ? '+' : '';
+        return `<div class="pred-day-row">
+            <span class="text-slate-500 font-medium">第 ${i + 1} 日</span>
+            <div class="pred-day-bar-wrap"><div class="pred-day-bar ${cls}" style="width:${pct}%"></div></div>
+            <span class="font-bold text-right ${v >= 0 ? 'text-emerald-600' : 'text-red-500'}">${sign}${v.toFixed(2)}%</span>
+        </div>`;
+    }).join('');
+}
+
+function renderEvidence(items) {
+    if (!items || !items.length) return '<p class="text-sm text-slate-400">暂无新闻明细</p>';
+    return items.map((n, i) => {
+        const tag = `<span class="pred-tag ${ruleTagClass(n.rule_type)}">${n.rule_label}</span>`;
+        const dir = `<span class="pred-tag ${dirTagClass(n.direction)} ml-1">${n.direction_label}</span>`;
+        const inner = `<span class="pred-evidence-num">${i + 1}</span>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-slate-800 leading-snug line-clamp-2">${n.title}</p>
+                <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    ${tag}${dir}
+                    <span class="text-xs text-slate-400">${n.source || '东方财富'}</span>
+                    <span class="text-xs text-slate-500">情感 ${n.sentiment}</span>
+                </div>
+            </div>
+            ${n.link ? '<i class="fa fa-external-link text-slate-300 text-xs mt-1"></i>' : ''}`;
+        if (n.link) {
+            return `<a class="pred-evidence-item block" href="${n.link}" target="_blank" rel="noopener">${inner}</a>`;
+        }
+        return `<div class="pred-evidence-item">${inner}</div>`;
+    }).join('');
+}
+
+function renderSentimentMeter(avgSentiment, label) {
+    const s = parseFloat(avgSentiment);
+    if (isNaN(s)) return '';
+    const pct = Math.round((Math.max(-1, Math.min(1, s)) + 1) / 2 * 100);
+    let tone = 'neutral', text = label || '中性';
+    if (s >= 0.35) { tone = 'bullish'; text = text || '偏乐观'; }
+    else if (s >= 0.08) { tone = 'bullish'; text = text || '略偏乐观'; }
+    else if (s <= -0.35) { tone = 'bearish'; text = text || '偏悲观'; }
+    else if (s <= -0.08) { tone = 'bearish'; text = text || '略偏悲观'; }
+    const stars = Math.max(1, Math.min(5, Math.round((s + 1) / 2 * 4 + 1)));
+    const starStr = '★'.repeat(stars) + '☆'.repeat(5 - stars);
+    return `<div class="pred-sentiment-meter tone-${tone}">
+        <div class="pred-sentiment-meter-head">
+            <span class="pred-sentiment-meter-label">综合情感</span>
+            <span class="pred-sentiment-meter-value">${text}</span>
+            <span class="pred-sentiment-meter-num">${avgSentiment}</span>
+        </div>
+        <div class="sentiment-meter pred-meter-bar">
+            <div class="sentiment-meter-fill tone-${tone}" style="width:${pct}%"></div>
+            <div class="sentiment-meter-marker" style="left:${pct}%"></div>
+        </div>
+        <div class="pred-sentiment-stars">${starStr}</div>
+    </div>`;
+}
+
+function renderResult(stockCode, p) {
+    const ctx = p.price_context || {};
+    const stats = p.announcement_stats || {};
+    const warnings = p.warnings || [];
+    const methodology = p.methodology || [];
+
+    return `
+    ${renderLowModelBanner(p)}
+    <div class="pred-hero">
+        <div class="flex flex-wrap items-start justify-between gap-3 relative z-10">
+            <div>
+                <div class="pred-hero-title">${p.stock_name || stockCode} <span class="opacity-70 font-semibold text-lg">${stockCode}</span></div>
+                <div class="pred-hero-sub">${p.industry || '综合'} · 分析 ${p.news_count || 0} 条公告 · 来源 ${p.news_source || '东方财富'}</div>
+            </div>
+            <span class="pred-badge ${confClass(p.confidence_level)}"><i class="fa fa-signal"></i> 置信度 ${p.confidence_level || '中'}</span>
+        </div>
+        <div class="pred-metric-grid relative z-10">
+            <div class="pred-metric">
+                <div class="pred-metric-label">预测趋势</div>
+                <div class="pred-metric-value ${trendClass(p.trend_key)}"><i class="fa ${trendIcon(p.trend_key, p.trend)} mr-1"></i>${p.trend || '-'}</div>
+                ${p.trend_hint ? '<p class="pred-trend-hint">' + p.trend_hint + '</p>' : ''}
+            </div>
+        </div>
+        ${renderSentimentMeter(p.avg_sentiment)}
+        <div class="pred-metric-grid relative z-10 pred-metric-grid-sub">
+            <div class="pred-metric">
+                <div class="pred-metric-label">最新收盘价</div>
+                <div class="pred-metric-value">${ctx.last_price != null ? '¥' + ctx.last_price : '—'}</div>
+            </div>
+            <div class="pred-metric">
+                <div class="pred-metric-label">分析条数</div>
+                <div class="pred-metric-value">${p.news_count || 0} 条</div>
+            </div>
+            <div class="pred-metric">
+                <div class="pred-metric-label">置信度</div>
+                <div class="pred-metric-value">${p.confidence_level || '中'}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="pred-section">
+        <div class="pred-section-title"><i class="fa fa-file-text-o"></i> 综合研判</div>
+        <p class="text-sm text-slate-700 leading-relaxed">${p.news_analysis || ''}</p>
+        ${p.market_note ? `<p class="text-sm text-teal-600 mt-2"><i class="fa fa-line-chart mr-1"></i>${p.market_note}</p>` : ''}
+        ${ctx.return_5d != null ? `<p class="text-xs text-slate-500 mt-3">行情支撑：近5日 ${ctx.return_5d >= 0 ? '+' : ''}${ctx.return_5d}% · 近20日 ${ctx.return_20d >= 0 ? '+' : ''}${ctx.return_20d}% · ${ctx.short_trend || ''}（${ctx.source || 'akshare'}）</p>` : ''}
+        <div class="grid grid-cols-3 gap-3 mt-4 text-center text-xs">
+            <div class="bg-slate-50 rounded-xl py-3"><div class="text-slate-400">偏利好</div><div class="font-bold text-emerald-600 text-lg">${stats.bullish || 0}</div></div>
+            <div class="bg-slate-50 rounded-xl py-3"><div class="text-slate-400">例行中性</div><div class="font-bold text-slate-600 text-lg">${stats.routine || 0}</div></div>
+            <div class="bg-slate-50 rounded-xl py-3"><div class="text-slate-400">偏利空</div><div class="font-bold text-red-500 text-lg">${stats.bearish || 0}</div></div>
+        </div>
+    </div>
+
+    <div class="pred-section">
+        <div class="pred-section-title"><i class="fa fa-calendar"></i> 未来 3 个交易日预测涨跌幅</div>
+        ${p.trend_hint ? '<p class="text-xs text-slate-500 mb-3"><i class="fa fa-info-circle mr-1"></i>' + p.trend_hint + '</p>' : ''}
+        <div class="pred-day-bars">${renderDayBars(p.price_changes)}</div>
+        <p class="text-xs text-slate-400 mt-3">已按「${p.industry}」行业历史波动做轻量校准 · 训练样本 ${p.train_samples || '—'} 条</p>
+    </div>
+
+    <div class="pred-section">
+        <div class="pred-section-title"><i class="fa fa-newspaper-o"></i> 新闻依据（可点击查看原文）</div>
+        <div class="space-y-2">${renderEvidence(p.news_evidence)}</div>
+        ${(p.news_count || 0) > 12 ? `<p class="text-xs text-slate-400 mt-3 text-center">共 ${p.news_count} 条，展示前 12 条</p>` : ''}
+    </div>
+
+    <div class="pred-section">
+        <div class="pred-section-title"><i class="fa fa-cogs"></i> 分析方法论</div>
+        <ul class="pred-method-list">${methodology.map(m => `<li>${m}</li>`).join('')}</ul>
+        ${p.model_r2 != null ? `<p class="text-xs text-slate-400 mt-2">模型 R² = ${Number(p.model_r2).toFixed(2)} · 训练数据：${p.data_source || ''}</p>` : ''}
+    </div>
+
+    ${warnings.length ? `<div class="pred-warn-box"><strong><i class="fa fa-info-circle mr-1"></i>模型提示</strong><ul class="mt-2 space-y-1 list-disc list-inside">${warnings.map(w => `<li>${w}</li>`).join('')}</ul></div>` : ''}
+
+    <div class="pred-section">
+        <div class="pred-section-title"><i class="fa fa-area-chart"></i> 价格走势与预测</div>
+        <div id="chartSection">
+            <div id="chartLoadingText" class="text-slate-400 text-center py-8"><div class="app-spinner mx-auto mb-3"></div>图表生成中…</div>
+            <div class="pred-chart-wrap hidden" id="chartWrap">
+                <img id="predictionChartImg" src="" alt="预测图表" class="w-full rounded-xl">
+            </div>
+        </div>
+    </div>
+
+    <p class="text-xs text-slate-400 text-center mt-6 pb-4">${p.disclaimer || ''}</p>`;
+}
+
+document.getElementById('predictionForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const stockCode = stockCodeInput.value.trim();
+    if (stockCode.length !== 6) { alert('请输入 6 位股票代码'); return; }
+
+    document.getElementById('loadingState').classList.remove('hidden');
+    document.getElementById('predictionResult').classList.add('hidden');
+
+    fetch('/api/stock-prediction?code=' + stockCode)
+        .then(r => r.json())
+        .then(async data => {
+            document.getElementById('loadingState').classList.add('hidden');
+            const container = document.getElementById('predictionResult');
+
+            if (!data.success) {
+                container.innerHTML = `<div class="pred-section text-red-600"><strong>预测失败：</strong>${data.error || '未知错误'}</div>`;
+                container.classList.remove('hidden');
+                return;
+            }
+
+            const p = data.prediction;
+            container.innerHTML = renderResult(stockCode, p);
+            container.classList.remove('hidden');
+
+            const chartWrap = document.getElementById('chartWrap');
+            const chartImg = document.getElementById('predictionChartImg');
+            const chartLoading = document.getElementById('chartLoadingText');
+
+            try {
+                const chartRes = await fetch('/api/prediction-chart?code=' + stockCode, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prediction: p })
+                });
+                if (chartRes.ok) {
+                    const blob = await chartRes.blob();
+                    chartImg.src = URL.createObjectURL(blob);
+                    chartImg.onload = () => {
+                        chartLoading.classList.add('hidden');
+                        chartWrap.classList.remove('hidden');
+                    };
+                } else {
+                    chartLoading.textContent = '图表暂不可用';
+                }
+            } catch {
+                chartLoading.textContent = '图表加载失败';
+            }
+        })
+        .catch(() => {
+            document.getElementById('loadingState').classList.add('hidden');
+            const container = document.getElementById('predictionResult');
+            container.innerHTML = '<div class="pred-section text-red-600">网络错误，请检查连接后重试</div>';
+            container.classList.remove('hidden');
+        });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% for q in quotes %}
+{% set pct = q.change_pct or 0 %}
+{% set cls = 'fav-up' if pct > 0 else ('fav-down' if pct < 0 else 'fav-flat') %}
+<div class="fav-quote-row {{ cls }}{% if compact %} fav-quote-row-compact{% endif %} dash-fav-in" data-code="{{ q.code }}" style="animation-delay: {{ loop.index0 * 0.06 }}s">
+    <div class="fav-quote-main">
+        <div class="fav-quote-name">{{ q.name }}<span class="fav-quote-code">{{ q.code }}</span></div>
+        <div class="fav-quote-price">{% if q.price is not none %}{{ '%.2f'|format(q.price) }}{% else %}--{% endif %}</div>
+        <div class="fav-quote-change">{{ q.change_display or '--' }}</div>
+    </div>
+    {% if compact %}
+    <a href="{{ url_for('stock_chart') }}?code={{ q.code }}" class="fav-action" title="行情"><i class="fa fa-line-chart"></i></a>
+    {% else %}
+    <div class="fav-row-actions">
+        <a href="{{ url_for('stock_chart') }}?code={{ q.code }}" class="fav-action-btn"><i class="fa fa-line-chart"></i> 行情</a>
+        <a href="{{ url_for('stock_news') }}?code={{ q.code }}" class="fav-action-btn"><i class="fa fa-newspaper-o"></i> 资讯</a>
+        <a href="{{ url_for('stock_prediction') }}?code={{ q.code }}" class="fav-action-btn"><i class="fa fa-magic"></i> 预测</a>
+        <button type="button" class="fav-remove-btn" data-code="{{ q.code }}"><i class="fa fa-times"></i></button>
+    </div>
+    {% endif %}
+</div>
+{% endfor %}

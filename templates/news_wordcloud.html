@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}公告词云 - 数境智投{% endblock %}
+
+{% block page_title %}公告词云{% endblock %}
+
+{% block page_subtitle %}
+<p class="text-sm text-slate-500 mt-0.5">经 jieba 分词并过滤公告套话后，字号越大表示关键词越突出</p>
+{% endblock %}
+
+{% block header_extra %}
+<a href="{{ back_url }}" class="text-sm text-primary hover:underline flex items-center gap-1 font-medium">
+    <i class="fa fa-arrow-left"></i> {{ back_label }}
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+    <div class="wc-hero app-card overflow-hidden">
+        <div class="wc-hero-accent"></div>
+        <div class="p-6 md:p-8 relative">
+            <div class="flex flex-wrap items-start gap-3 mb-4">
+                <span class="wc-badge"><i class="fa fa-cloud mr-1"></i>词云分析</span>
+                {% if stock_code %}
+                <span class="wc-badge wc-badge-code">{{ stock_code }}</span>
+                {% endif %}
+            </div>
+            <h2 class="wc-title">{{ title }}</h2>
+            <p class="wc-desc">
+                从公告正文中提取高频关键词并可视化。不必通读全文，一眼即可看出本场调研或公告在谈
+                <strong>销量、产品、海外</strong> 等哪些话题。
+            </p>
+        </div>
+    </div>
+
+    <div class="app-card p-6 md:p-8">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+            <h3 class="text-base font-bold text-neutral flex items-center gap-2">
+                <i class="fa fa-picture-o text-primary"></i> 关键词云图
+            </h3>
+            <a href="{{ article_url }}" target="_blank" rel="noopener" class="text-sm text-primary hover:underline flex items-center gap-1">
+                <i class="fa fa-external-link"></i> 查看原文
+            </a>
+        </div>
+
+        <div id="cloud-loading" class="wc-loading">
+            <div class="app-spinner mx-auto mb-4"></div>
+            <p class="text-slate-500">正在分析正文并生成词云<span class="loading-dots"></span></p>
+        </div>
+
+        <div id="cloud-err" class="wc-error hidden"></div>
+
+        <div id="cloud-frame" class="wc-frame hidden">
+            <img id="wordcloud-img" class="wc-img" src="" alt="词云图" />
+        </div>
+    </div>
+
+    <div class="wc-tips grid md:grid-cols-3 gap-4">
+        <div class="wc-tip-card">
+            <div class="wc-tip-icon"><i class="fa fa-search"></i></div>
+            <h4>怎么看</h4>
+            <p>字越大、越居中，通常表示该词在公告里越重要或出现次数越多。</p>
+        </div>
+        <div class="wc-tip-card">
+            <div class="wc-tip-icon"><i class="fa fa-heartbeat"></i></div>
+            <h4>和情感分析的关系</h4>
+            <p>情感告诉你偏积极还是谨慎；词云告诉你<strong>具体在聊什么</strong>，两者互补。</p>
+        </div>
+        <div class="wc-tip-card">
+            <div class="wc-tip-icon"><i class="fa fa-lightbulb-o"></i></div>
+            <h4>使用建议</h4>
+            <p>对比多条公告词云，可快速发现公司近期是否反复提及同一主题。</p>
+        </div>
+    </div>
+
+    <div class="flex flex-wrap gap-3 justify-center pb-4">
+        <a href="{{ back_url }}" class="app-btn-primary text-sm py-2.5 px-6">
+            <i class="fa fa-arrow-left mr-1"></i> {{ back_label }}
+        </a>
+        {% if stock_code %}
+        <a href="{{ url_for('stock_news') }}?code={{ stock_code }}" class="app-btn-secondary text-sm py-2.5 px-6">
+            <i class="fa fa-newspaper-o mr-1"></i> 继续看公告列表
+        </a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const articleUrl = {{ article_url | tojson }};
+    const imgUrl = '/news-wordcloud-image?url=' + encodeURIComponent(articleUrl) + '&v=2';
+    const loadingEl = document.getElementById('cloud-loading');
+    const errEl = document.getElementById('cloud-err');
+    const frameEl = document.getElementById('cloud-frame');
+    const img = document.getElementById('wordcloud-img');
+
+    fetch(imgUrl).then(async (r) => {
+        loadingEl.classList.add('hidden');
+        if (!r.ok) {
+            const msg = (await r.text()).trim();
+            errEl.textContent = msg || '词云生成失败，请稍后重试';
+            errEl.classList.remove('hidden');
+            return;
+        }
+        const blob = await r.blob();
+        img.src = URL.createObjectURL(blob);
+        frameEl.classList.remove('hidden');
+    }).catch(() => {
+        loadingEl.classList.add('hidden');
+        errEl.textContent = '词云生成失败，请检查网络后重试';
+        errEl.classList.remove('hidden');
+    });
+})();
+</script>
+{% endblock %}

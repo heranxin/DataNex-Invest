@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}热点资讯 - 数境智投{% endblock %}
+{% block page_title %}热点资讯{% endblock %}
+{% block page_subtitle %}<p class="text-sm text-slate-500 mt-0.5">东方财富网友点击排行榜 · 每 30 分钟更新</p>{% endblock %}
+
+{% block head_extra %}
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="newspaper-page">
+    <div class="newspaper-sheet newspaper-hub">
+        <header class="newspaper-masthead">
+            <div class="newspaper-masthead-ornament">✦ &nbsp; 数境智投 &nbsp; ✦</div>
+            <h1 class="newspaper-masthead-title">财经日报</h1>
+            <p class="newspaper-masthead-sub">FINANCIAL DAILY · 市场热点专刊</p>
+            <div class="newspaper-edition">
+                <span id="hub-date">——</span>
+                <span id="hub-source">数据来源：东方财富</span>
+                <span id="hub-updated">更新中...</span>
+            </div>
+        </header>
+
+        <div class="newspaper-hub-lead">
+            <div class="newspaper-hub-lead-label">今日头条</div>
+            <a id="hub-lead-link" href="#" class="newspaper-hub-lead-title">加载中...</a>
+            <p id="hub-lead-desc" class="newspaper-hub-lead-desc">正在获取最热资讯...</p>
+        </div>
+
+        <div class="newspaper-hub-divider">
+            <span>热 点 排 行</span>
+        </div>
+
+        <div id="hub-news-list" class="newspaper-hub-list">
+            <div class="flex items-center justify-center py-16 text-[#8B7355]">
+                <div class="app-spinner mr-3"></div> 正在加载资讯...
+            </div>
+        </div>
+
+        <footer class="newspaper-hub-footer">
+            <p class="text-xs text-[#8B7355] leading-relaxed">
+                资讯来源于东方财富网「网友点击排行榜」，按用户点击量排序，每 30 分钟自动刷新缓存。
+                内容仅供参考，不构成投资建议。
+            </p>
+            <div class="flex flex-wrap gap-3 mt-4 justify-center">
+                <button type="button" id="hub-refresh-btn" class="newspaper-btn-outline">
+                    <i class="fa fa-refresh mr-1"></i> 刷新榜单
+                </button>
+                <a href="{{ url_for('dashboard') }}" class="newspaper-btn-outline">
+                    <i class="fa fa-arrow-left mr-1"></i> 返回工作台
+                </a>
+            </div>
+        </footer>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const listEl = document.getElementById('hub-news-list');
+    const leadLink = document.getElementById('hub-lead-link');
+    const leadDesc = document.getElementById('hub-lead-desc');
+    const updatedEl = document.getElementById('hub-updated');
+    const sourceEl = document.getElementById('hub-source');
+    const dateEl = document.getElementById('hub-date');
+    const refreshBtn = document.getElementById('hub-refresh-btn');
+
+    dateEl.textContent = new Date().toLocaleDateString('zh-CN', {
+        year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
+    });
+
+    function articleUrl(item) {
+        return '/news-article?link=' + encodeURIComponent(item.link) +
+            '&title=' + encodeURIComponent(item.title);
+    }
+
+    function formatUpdated(iso) {
+        if (!iso) return '刚刚更新';
+        const d = new Date(iso);
+        if (isNaN(d)) return iso;
+        return '榜单更新：' + d.toLocaleString('zh-CN', { hour12: false });
+    }
+
+    function renderList(items) {
+        if (!items.length) {
+            listEl.innerHTML = '<p class="text-center py-12 text-[#8B7355]">暂无热点资讯</p>';
+            return;
+        }
+        const lead = items[0];
+        leadLink.href = articleUrl(lead);
+        leadLink.textContent = lead.title;
+        leadDesc.textContent = '当前点击量最高的财经要闻，点击查看全文报道。';
+
+        const rest = items.slice(1);
+        listEl.innerHTML = rest.map(function (item, idx) {
+            const num = idx + 2;
+            const rankClass = num <= 3 ? ' rank-top' : '';
+            return '<a href="' + articleUrl(item) + '" class="newspaper-hub-item' + rankClass + '">' +
+                '<span class="newspaper-hub-rank">' + num + '</span>' +
+                '<span class="newspaper-hub-item-title">' + escapeHtml(item.title) + '</span>' +
+                '<i class="fa fa-angle-right newspaper-hub-arrow"></i>' +
+                '</a>';
+        }).join('');
+    }
+
+    function escapeHtml(s) {
+        const d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+    }
+
+    async function loadHotNews(force) {
+        listEl.innerHTML = '<div class="flex items-center justify-center py-16 text-[#8B7355]"><div class="app-spinner mr-3"></div> 正在加载资讯...</div>';
+        try {
+            const url = '/api/hot-news' + (force ? '?refresh=1' : '');
+            const res = await fetch(url);
+            const data = await res.json();
+            const items = data.items || [];
+            updatedEl.textContent = formatUpdated(data.updated_at);
+            if (data.source) sourceEl.textContent = '数据来源：' + data.source;
+            renderList(items);
+        } catch (e) {
+            listEl.innerHTML = '<p class="text-center py-12 text-red-600">加载失败，请稍后重试</p>';
+        }
+    }
+
+    refreshBtn.addEventListener('click', function () {
+        refreshBtn.disabled = true;
+        loadHotNews(true).finally(function () { refreshBtn.disabled = false; });
+    });
+
+    loadHotNews(false);
+})();
+</script>
+{% endblock %}

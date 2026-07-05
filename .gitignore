@@ -1,0 +1,39 @@
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# Local History for Visual Studio Code
+.history/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env/
+
+# 环境变量与密钥
+.env
+ai_config.local.json
+
+# 本地数据库与用户数据
+instance/
+*.db
+
+# 运行时缓存（可本地重新生成）
+static/new_cache/
+static/cache/
+knowledge/rag_index.joblib
+
+# 日志与测试输出
+*.log
+test_*_output.log
+test_*_summary*.txt
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+
+{% block title %}股票查询 - 数境智投{% endblock %}
+
+{% block page_title %}股票查询{% endblock %}
+
+{% block page_subtitle %}<p class="text-sm text-slate-500 mt-0.5">支持代码、股票名称、拼音首字母；不知道买什么？去 <a href="{{ url_for('stock_browse') }}" class="text-primary hover:underline font-medium">股票发现</a></p>{% endblock %}
+
+{% block header_extra %}
+<a href="{{ url_for('stock_browse') }}" class="text-sm text-primary hover:underline flex items-center gap-1">
+    <i class="fa fa-th-large"></i> 股票发现
+</a>
+{% endblock %}
+
+{% block content %}
+
+<div class="max-w-3xl mx-auto">
+
+    <a href="{{ url_for('stock_browse') }}" class="browse-promo-banner mb-6 block">
+        <div class="browse-promo-icon"><i class="fa fa-compass"></i></div>
+        <div class="flex-1 min-w-0">
+            <strong>不知道有哪些股票？</strong>
+            <p>按白酒、新能源、银行等分类浏览，全市场 5000+ 只 A 股均可搜索</p>
+        </div>
+        <i class="fa fa-angle-right browse-promo-arrow"></i>
+    </a>
+
+    <div class="app-card p-8 mb-6">
+
+        <form id="stockQueryForm" class="space-y-6">
+
+            <div>
+
+                <label for="stockCode" class="block text-sm font-semibold text-slate-700 mb-2">股票代码 / 名称</label>
+
+                <div class="relative stock-search-wrap">
+
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400 z-10">
+
+                        <i class="fa fa-search"></i>
+
+                    </span>
+
+                    <input type="text" id="stockCode" name="stockCode" class="app-input pl-11 pr-10" placeholder="如 600519、贵州茅台、GZMT" autocomplete="off" required>
+
+                    <div id="codeClear" class="hidden absolute inset-y-0 right-0 flex items-center pr-4 text-slate-400 cursor-pointer hover:text-primary z-10">
+
+                        <i class="fa fa-times"></i>
+
+                    </div>
+
+                    <div id="stockSuggest" class="stock-suggest-dropdown hidden"></div>
+
+                </div>
+
+                <p id="codeHint" class="mt-2 text-xs text-slate-400">试试输入「茅台」「BYD」「平安」或 6 位代码</p>
+
+                <p id="codeError" class="mt-2 text-sm text-red-500 hidden"></p>
+
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <button type="button" id="infoBtn" disabled class="app-btn-primary flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                    <i class="fa fa-line-chart"></i> 查询行情
+                </button>
+                <button type="button" id="newsBtn" disabled class="app-btn-secondary flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed border-2 border-primary/30 bg-teal-50 text-primary-dark font-semibold">
+                    <i class="fa fa-heartbeat"></i> 公告情感
+                </button>
+                <button type="button" id="predictBtn" disabled class="app-btn-secondary flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                    <i class="fa fa-magic"></i> 深度预测
+                </button>
+            </div>
+
+        </form>
+
+    </div>
+
+
+
+    <div class="app-card p-8">
+
+        <h2 class="text-lg font-bold text-neutral mb-5 flex items-center gap-2">
+
+            <i class="fa fa-info-circle text-primary"></i> 使用说明
+
+        </h2>
+
+        <ul class="space-y-4">
+
+            <li class="flex items-start gap-3 text-slate-600 text-sm">
+
+                <span class="w-6 h-6 rounded-full bg-teal-100 text-primary flex items-center justify-center flex-shrink-0 text-xs font-bold">1</span>
+
+                支持 6 位代码、中文简称、拼音首字母（如 GZMT、BYD）
+
+            </li>
+
+            <li class="flex items-start gap-3 text-slate-600 text-sm">
+
+                <span class="w-6 h-6 rounded-full bg-teal-100 text-primary flex items-center justify-center flex-shrink-0 text-xs font-bold">2</span>
+
+                输入时出现联想列表，点击或回车即可选中
+
+            </li>
+
+            <li class="flex items-start gap-3 text-slate-600 text-sm">
+
+                <span class="w-6 h-6 rounded-full bg-teal-100 text-primary flex items-center justify-center flex-shrink-0 text-xs font-bold">3</span>
+
+                「查询股票信息」查看实时行情与 K 线图表
+
+            </li>
+
+            <li class="flex items-start gap-3 text-slate-600 text-sm">
+
+                <span class="w-6 h-6 rounded-full bg-teal-100 text-primary flex items-center justify-center flex-shrink-0 text-xs font-bold">4</span>
+
+                「公告情感」查看利好/利空标注与综合舆情
+
+            </li>
+
+            <li class="flex items-start gap-3 text-slate-600 text-sm">
+
+                <span class="w-6 h-6 rounded-full bg-teal-100 text-primary flex items-center justify-center flex-shrink-0 text-xs font-bold">5</span>
+
+                「深度预测」使用 FinBERT 模型预测 3 日走势
+
+        </ul>
+
+    </div>
+
+</div>
+
+{% endblock %}
+
+
+
+{% block scripts %}
+
+<script src="{{ url_for('static', filename='js/stock-search.js') }}?v=1"></script>
+
+<script>
+
+document.addEventListener('DOMContentLoaded', function() {
+
+    const stockCodeInput = document.getElementById('stockCode');
+
+    const codeClear = document.getElementById('codeClear');
+
+    const codeError = document.getElementById('codeError');
+
+    const infoBtn = document.getElementById('infoBtn');
+
+    const newsBtn = document.getElementById('newsBtn');
+    const predictBtn = document.getElementById('predictBtn');
+
+    const stockSuggest = document.getElementById('stockSuggest');
+
+
+
+    const searchApi = StockSearch.init({
+
+        input: stockCodeInput,
+
+        dropdown: stockSuggest,
+
+        onSelect: function () { updateButtons(); },
+
+    });
+
+
+
+    function updateButtons() {
+
+        const hasValue = stockCodeInput.value.trim().length > 0;
+
+        codeClear.classList.toggle('hidden', !hasValue);
+
+        infoBtn.disabled = !hasValue;
+
+        newsBtn.disabled = !hasValue;
+        if (predictBtn) predictBtn.disabled = !hasValue;
+
+        if (hasValue) codeError.classList.add('hidden');
+
+    }
+
+
+
+    stockCodeInput.addEventListener('input', updateButtons);
+
+    codeClear.addEventListener('click', function() {
+
+        stockCodeInput.value = '';
+
+        stockCodeInput.focus();
+
+        searchApi.hide();
+
+        updateButtons();
+
+    });
+
+
+
+    async function goTo(path) {
+
+        codeError.classList.add('hidden');
+
+        try {
+
+            const code = await searchApi.resolve();
+
+            if (code) window.location.href = path + code;
+
+        } catch (e) {
+
+            codeError.textContent = e.message || '请输入有效的股票代码或名称';
+
+            codeError.classList.remove('hidden');
+
+        }
+
+    }
+
+
+
+    infoBtn.addEventListener('click', function() { goTo('/stock-chart?code='); });
+
+    newsBtn.addEventListener('click', function() { goTo('/stock-news?code='); });
+    if (predictBtn) predictBtn.addEventListener('click', function() { goTo('/stock-prediction?code='); });
+
+
+
+    const stockCode = new URLSearchParams(window.location.search).get('stockCode');
+
+    if (stockCode) {
+
+        stockCodeInput.value = stockCode;
+
+        updateButtons();
+
+    }
+
+});
+
+</script>
+
+{% endblock %}
+

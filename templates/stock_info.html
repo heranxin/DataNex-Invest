@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}A股资讯 - 数境智投{% endblock %}
+{% block page_title %}A股资讯{% endblock %}
+{% block page_subtitle %}<p class="text-sm text-slate-500 mt-0.5">股票代码：<span id="stock-code-display" class="font-semibold text-primary">-</span></p>{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+    <div class="app-card p-8">
+        <h2 class="text-lg font-bold text-neutral mb-4">股票详情</h2>
+        <div id="stock-detail"><div class="app-spinner"></div></div>
+    </div>
+    <div class="app-card p-8">
+        <h2 class="text-lg font-bold text-neutral mb-4">相关新闻</h2>
+        <div id="stock-news"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function getStockCodeFromURL() {
+    return new URLSearchParams(window.location.search).get('stock_code');
+}
+async function fetchStockDetail(stockCode) {
+    const container = document.getElementById('stock-detail');
+    try {
+        const data = await fetch('/api/stock-detail?code=' + stockCode).then(r => r.json());
+        if (data.error) { container.innerHTML = '<p class="text-red-500 text-sm">' + data.error + '</p>'; return; }
+        container.innerHTML = '<div class="grid grid-cols-2 gap-4">' +
+            [['股票名称', data.name], ['当前价格', data.price], ['涨跌幅', data.changePercent + '%'], ['成交量', data.volume], ['市值', data.marketCap]]
+            .map(([k,v]) => '<div class="p-4 rounded-xl bg-slate-50"><p class="text-xs text-slate-400">' + k + '</p><p class="font-semibold">' + v + '</p></div>').join('') + '</div>';
+    } catch(e) { container.innerHTML = '<p class="text-red-500 text-sm">无法加载股票详情</p>'; }
+}
+async function fetchStockNews(stockCode) {
+    const container = document.getElementById('stock-news');
+    try {
+        const newsList = await fetch('/api/stock-news?code=' + stockCode).then(r => r.json());
+        if (!newsList.length) { container.innerHTML = '<p class="text-slate-400 text-sm">暂无相关新闻</p>'; return; }
+        container.innerHTML = newsList.map(n => '<a href="' + n.url + '" target="_blank" class="news-item block"><p class="font-medium text-slate-800 hover:text-primary">' + n.title + '</p><p class="text-xs text-slate-400 mt-1">来源：' + n.source + '</p></a>').join('');
+    } catch(e) { container.innerHTML = '<p class="text-red-500 text-sm">无法加载新闻</p>'; }
+}
+const code = getStockCodeFromURL();
+if (code) {
+    document.getElementById('stock-code-display').textContent = code;
+    fetchStockDetail(code);
+    fetchStockNews(code);
+}
+</script>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}个人资料 - 数境智投{% endblock %}
+{% block page_title %}个人资料{% endblock %}
+{% block page_subtitle %}<p class="text-sm text-slate-500 mt-0.5">查看和管理您的账户信息</p>{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <div class="app-card p-8">
+        <div class="flex flex-col md:flex-row items-center gap-8">
+            <img src="https://picsum.photos/200/200?random={{ user.id }}" alt="头像" class="h-28 w-28 rounded-2xl object-cover ring-4 ring-teal-100 shadow-lg">
+            <div class="flex-1 w-full">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div class="p-4 rounded-xl bg-slate-50">
+                        <p class="text-xs text-slate-400 mb-1">用户名</p>
+                        <p class="font-semibold text-neutral">{{ user.username }}</p>
+                    </div>
+                    {% if user.nickname %}
+                    <div class="p-4 rounded-xl bg-slate-50">
+                        <p class="text-xs text-slate-400 mb-1">昵称</p>
+                        <p class="font-semibold text-neutral">{{ user.nickname }}</p>
+                    </div>
+                    {% endif %}
+                    {% if user.phone %}
+                    <div class="p-4 rounded-xl bg-slate-50">
+                        <p class="text-xs text-slate-400 mb-1">手机号</p>
+                        <p class="font-semibold text-neutral">{{ user.phone }}</p>
+                    </div>
+                    {% endif %}
+                    {% if user.email %}
+                    <div class="p-4 rounded-xl bg-slate-50">
+                        <p class="text-xs text-slate-400 mb-1">邮箱</p>
+                        <p class="font-semibold text-neutral">{{ user.email }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+                <a href="{{ url_for('edit_profile') }}" class="app-btn-primary inline-flex items-center gap-2 mt-6">
+                    <i class="fa fa-pencil"></i> 编辑资料
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
