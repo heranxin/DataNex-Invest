@@ -177,7 +177,8 @@ def get_browse_quotes_payload():
     quotes_map = {}
     try:
         # 1) 网络请求走硬超时，避免接口卡住导致页面一直 "--"
-        with ThreadPoolExecutor(max_workers=1) as pool:
+        pool = ThreadPoolExecutor(max_workers=1)
+        try:
             fut = pool.submit(_fetch_live_quotes, codes, quotes_map)
             try:
                 fut.result(timeout=_BROWSE_QUOTES_TIMEOUT)
@@ -185,6 +186,9 @@ def get_browse_quotes_payload():
                 print(f'股票发现行情超时（>{_BROWSE_QUOTES_TIMEOUT}s），走本地兜底')
             except Exception as e:
                 print(f'股票发现行情异常，走本地兜底: {e}')
+        finally:
+            # 超时后不要等待慢任务结束，直接返回兜底数据给前端
+            pool.shutdown(wait=False, cancel_futures=True)
 
         # 2) 本地单股缓存补齐
         missing = [c for c in codes if c not in quotes_map or quotes_map[c].get('price') is None]
