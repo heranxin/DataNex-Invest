@@ -1,6 +1,7 @@
 """股票发现：分类推荐 + 市场概览，帮助新手知道有哪些股票可查。"""
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 from model.news_analysis import STOCK_DISPLAY_NAMES
 from model.favorite_quotes import (
@@ -10,6 +11,8 @@ from model.favorite_quotes import (
     fetch_favorite_quotes,
 )
 from model.stock_search import INDEX_CACHE, is_valid_a_share_code
+
+_BROWSE_QUOTES_TIMEOUT = 8
 
 # 按行业/主题整理的常见 A 股（新手入门用，非投资建议）
 STOCK_CATEGORIES = [
@@ -173,24 +176,24 @@ def get_browse_quotes_payload():
     codes = all_category_codes()
     quotes_map = {}
     try:
-        # 1) 先用新浪批量行情，一次请求覆盖全部分类股
-        quotes_map.update(_fetch_batch_sina_quotes(codes))
+        # 1) 网络请求走硬超时，避免接口卡住导致页面一直 "--"
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            fut = pool.submit(_fetch_live_quotes, codes, quotes_map)
+            try:
+                fut.result(timeout=_BROWSE_QUOTES_TIMEOUT)
+            except TimeoutError:
+                print(f'股票发现行情超时（>{_BROWSE_QUOTES_TIMEOUT}s），走本地兜底')
+            except Exception as e:
+                print(f'股票发现行情异常，走本地兜底: {e}')
 
-        # 2) 缺失项走现有兜底逻辑（轻量并行）
-        missing = [c for c in codes if c not in quotes_map or quotes_map[c].get('price') is None]
-        if missing:
-            for q in fetch_favorite_quotes(missing, sort_by='code', lightweight=True):
-                if q.get('price') is not None:
-                    quotes_map[q['code']] = q
-
-        # 3) 再用本地单股缓存补齐
+        # 2) 本地单股缓存补齐
         missing = [c for c in codes if c not in quotes_map or quotes_map[c].get('price') is None]
         for code in missing:
             cached = _quote_from_local_stock_cache(code)
             if cached and cached.get('price') is not None:
                 quotes_map[code] = cached
 
-        # 4) 最后从热股快照补（防止云端上游抖动时整页都显示 "--"）
+        # 3) 最后从热股快照补（防止云端上游抖动时整页都显示 "--"）
         missing = [c for c in codes if c not in quotes_map or quotes_map[c].get('price') is None]
         ticker_map = _load_ticker_snapshot_map()
         for code in missing:
@@ -208,6 +211,19 @@ def get_browse_quotes_payload():
     except Exception as e:
         return {'quotes': {}, 'error': str(e)}
     return {'quotes': quotes_map}
+
+
+def _fetch_live_quotes(codes, quotes_map):
+    """尽力拉实时行情（可能慢），调用方会做超时保护。"""
+    # A) 新浪批量行情，一次请求覆盖全部分类股
+    quotes_map.update(_fetch_batch_sina_quotes(codes))
+
+    # B) 缺失项走现有兜底逻辑（轻量并行）
+    missing = [c for c in codes if c not in quotes_map or quotes_map[c].get('price') is None]
+    if missing:
+        for q in fetch_favorite_quotes(missing, sort_by='code', lightweight=True):
+            if q.get('price') is not None:
+                quotes_map[q['code']] = q
 
 
 def _fetch_batch_sina_quotes(codes):
