@@ -148,12 +148,13 @@ def _build_categories(index_names, quotes_map=None):
 
 
 def get_browse_payload(with_quotes=False):
-    """页面首屏：默认不拉全市场行情，保证秒开。"""
+    """页面首屏：先用本地缓存秒开，再异步补全实时行情。"""
     index = _load_index_fast()
     index_names = {e['code']: e['name'] for e in index}
     total = len(index) if len(index) > 100 else 5200
 
-    quotes_map = {}
+    # 首屏优先使用本地缓存与热股快照，避免全卡片先显示 "--"
+    quotes_map = _build_fast_quotes_map(all_category_codes())
     if with_quotes:
         try:
             for q in fetch_favorite_quotes(all_category_codes(), sort_by='code', lightweight=True):
@@ -169,6 +170,31 @@ def get_browse_payload(with_quotes=False):
         'quotes_loaded': bool(with_quotes),
         'search_tip': '平台支持全部 A 股：输入代码、中文名或拼音首字母即可搜索（如 茅台、BYD、GZMT）',
     }
+
+
+def _build_fast_quotes_map(codes):
+    """仅用本地可得数据快速构建行情，不发起网络请求。"""
+    out = {}
+    for code in codes:
+        cached = _quote_from_local_stock_cache(code)
+        if cached and cached.get('price') is not None:
+            out[code] = cached
+
+    ticker_map = _load_ticker_snapshot_map()
+    for code in codes:
+        if code in out:
+            continue
+        snap = ticker_map.get(code)
+        if snap and snap.get('price') is not None:
+            out[code] = {
+                'code': code,
+                'name': snap.get('name') or STOCK_DISPLAY_NAMES.get(code, code),
+                'price': snap.get('price'),
+                'change_pct': snap.get('change_pct', 0.0),
+                'change_display': snap.get('change_display', '--'),
+                'status': 'cached',
+            }
+    return out
 
 
 def get_browse_quotes_payload():

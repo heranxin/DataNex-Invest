@@ -153,7 +153,7 @@ document.addEventListener('DOMContentLoaded', function () {
             renderPage(data);
             quotesHint.textContent = '正在后台加载示例股行情…';
             quotesHint.classList.remove('hidden');
-            return fetchWithTimeout('/api/stock-browse-quotes', 45000);
+            return fetchWithTimeout('/api/stock-browse-quotes', 12000);
         })
         .then(function (r) {
             if (!r || !r.ok) return null;
