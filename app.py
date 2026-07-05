@@ -1,5 +1,5 @@
 from pathlib import Path
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, send_file, Response
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, send_file, Response, stream_with_context
 import json
 from wordcloud import WordCloud
 import requests
@@ -956,6 +956,7 @@ def api_ai_chat():
         from model.ai_assistant import chat, chat_stream
 
         if stream:
+            @stream_with_context
             def generate():
                 for evt in chat_stream(message, history=history):
                     yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"

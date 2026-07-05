@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
@@ -13,6 +14,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 import requests
+from requests.adapters import HTTPAdapter
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -23,7 +25,7 @@ KNOWLEDGE_FILE = ROOT / 'knowledge' / 'stock_knowledge.json'
 INDEX_FILE = ROOT / 'knowledge' / 'rag_index.joblib'
 
 _rag_cache = None
-_http_session = None
+_session_local = threading.local()
 _KB_CHUNK_MAX = 420
 _LIVE_NEWS_MAX = 3
 
@@ -65,19 +67,34 @@ def _load_env():
 def _get_api_config():
     _load_env()
     max_tokens = int(os.getenv('AI_MAX_TOKENS', '1800'))
+    api_key = (os.getenv('SILICONFLOW_API_KEY') or os.getenv('AI_API_KEY', '')).strip().strip('"').strip("'")
     return {
-        'api_key': os.getenv('SILICONFLOW_API_KEY') or os.getenv('AI_API_KEY', ''),
+        'api_key': api_key,
         'api_base': os.getenv('AI_API_BASE', 'https://api.siliconflow.cn/v1/chat/completions'),
         'model': os.getenv('AI_MODEL', 'Qwen/Qwen2.5-7B-Instruct'),
         'max_tokens': max(512, min(max_tokens, 2048)),
     }
 
 
+def _new_http_session():
+    """创建独立 HTTP 会话，避免多用户并发时共享会话互相影响。"""
+    session = requests.Session()
+    # 避免服务器上残留的 HTTP(S)_PROXY 环境变量干扰 LLM 调用并触发编码异常
+    session.trust_env = False
+    session.proxies = {}
+    adapter = HTTPAdapter(pool_connections=32, pool_maxsize=32)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
+
+
 def _get_http_session():
-    global _http_session
-    if _http_session is None:
-        _http_session = requests.Session()
-    return _http_session
+    """每个线程一个会话，提升并发稳定性。"""
+    session = getattr(_session_local, 'session', None)
+    if session is None:
+        session = _new_http_session()
+        _session_local.session = session
+    return session
 
 
 class StockRAG:
@@ -739,8 +756,9 @@ def call_llm_stream(messages, config=None, temperature=0.5):
     payload = _llm_payload(messages, config, temperature)
     payload['stream'] = True
 
+    session = _new_http_session()
     try:
-        resp = _get_http_session().post(
+        resp = session.post(
             config['api_base'],
             headers=headers,
             json=payload,
@@ -772,6 +790,8 @@ def call_llm_stream(messages, config=None, temperature=0.5):
     except Exception as e:
         logger.error('LLM 流式调用失败: %s', e)
         raise
+    finally:
+        session.close()
 
 
 def fallback_answer(query, kb_text, live_text, sources):
