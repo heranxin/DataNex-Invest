@@ -3,7 +3,12 @@ import json
 import os
 
 from model.news_analysis import STOCK_DISPLAY_NAMES
-from model.favorite_quotes import fetch_favorite_quotes
+from model.favorite_quotes import (
+    _parse_change_pct,
+    _parse_price,
+    _quote_from_local_stock_cache,
+    fetch_favorite_quotes,
+)
 from model.stock_search import INDEX_CACHE, is_valid_a_share_code
 
 # 按行业/主题整理的常见 A 股（新手入门用，非投资建议）
@@ -165,10 +170,102 @@ def get_browse_payload(with_quotes=False):
 
 def get_browse_quotes_payload():
     """异步补行情：仅 30 只分类股，轻量模式。"""
+    codes = all_category_codes()
     quotes_map = {}
     try:
-        for q in fetch_favorite_quotes(all_category_codes(), sort_by='code', lightweight=True):
-            quotes_map[q['code']] = q
+        # 1) 先用新浪批量行情，一次请求覆盖全部分类股
+        quotes_map.update(_fetch_batch_sina_quotes(codes))
+
+        # 2) 缺失项走现有兜底逻辑（轻量并行）
+        missing = [c for c in codes if c not in quotes_map or quotes_map[c].get('price') is None]
+        if missing:
+            for q in fetch_favorite_quotes(missing, sort_by='code', lightweight=True):
+                if q.get('price') is not None:
+                    quotes_map[q['code']] = q
+
+        # 3) 再用本地单股缓存补齐
+        missing = [c for c in codes if c not in quotes_map or quotes_map[c].get('price') is None]
+        for code in missing:
+            cached = _quote_from_local_stock_cache(code)
+            if cached and cached.get('price') is not None:
+                quotes_map[code] = cached
+
+        # 4) 最后从热股快照补（防止云端上游抖动时整页都显示 "--"）
+        missing = [c for c in codes if c not in quotes_map or quotes_map[c].get('price') is None]
+        ticker_map = _load_ticker_snapshot_map()
+        for code in missing:
+            snap = ticker_map.get(code)
+            if snap and snap.get('price') is not None:
+                quotes_map[code] = {
+                    'code': code,
+                    'name': snap.get('name') or STOCK_DISPLAY_NAMES.get(code, code),
+                    'price': snap.get('price'),
+                    'change_pct': snap.get('change_pct', 0.0),
+                    'change_display': snap.get('change_display', '--'),
+                    'status': 'cached',
+                }
+
     except Exception as e:
         return {'quotes': {}, 'error': str(e)}
     return {'quotes': quotes_map}
+
+
+def _fetch_batch_sina_quotes(codes):
+    out = {}
+    if not codes:
+        return out
+    try:
+        import akshare as ak
+        from model.network_utils import direct_connection
+
+        with direct_connection():
+            spot = ak.stock_zh_a_spot()
+        code_set = set(codes)
+        for _, row in spot.iterrows():
+            raw_code = str(row.get('代码', '')).strip()
+            if not raw_code:
+                continue
+            code = raw_code[-6:].zfill(6)
+            if code not in code_set:
+                continue
+            price = _parse_price(row.get('最新价'))
+            if price is None:
+                continue
+            change_pct = _parse_change_pct(row.get('涨跌幅'))
+            name = str(row.get('名称') or STOCK_DISPLAY_NAMES.get(code, code)).strip()
+            out[code] = {
+                'code': code,
+                'name': name or STOCK_DISPLAY_NAMES.get(code, code),
+                'price': price,
+                'change_pct': change_pct,
+                'change_display': f'{change_pct:+.2f}%',
+                'status': 'ok',
+            }
+    except Exception as e:
+        print(f'股票发现-新浪批量行情失败: {e}')
+    return out
+
+
+def _load_ticker_snapshot_map():
+    root = os.path.dirname(os.path.dirname(__file__))
+    cache_dir = os.path.join(root, 'static', 'cache')
+    files = [
+        os.path.join(cache_dir, 'market_ticker_daily.json'),
+        os.path.join(cache_dir, 'market_ticker_last_good.json'),
+    ]
+    out = {}
+    for path in files:
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            for item in data.get('items') or []:
+                code = str(item.get('code') or '').zfill(6)
+                if not code or code == '000000':
+                    continue
+                if code not in out and item.get('price') is not None:
+                    out[code] = item
+        except Exception:
+            continue
+    return out
