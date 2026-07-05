@@ -21,7 +21,7 @@ _DAILY_FILE = os.path.join(_CACHE_DIR, 'market_ticker_daily.json')
 _LAST_GOOD_FILE = os.path.join(_CACHE_DIR, 'market_ticker_last_good.json')
 _STOCK_CACHE_DIR = os.path.join(_ROOT, 'static', 'new_cache')
 
-_FETCH_TIMEOUT = 15
+_FETCH_TIMEOUT = 35
 _MAX_WORKERS = 4
 _REFRESH_LOCK = threading.Lock()
 
@@ -284,6 +284,18 @@ def refresh_daily_ticker(limit=12):
                     print(f'热股更新失败 {futures.get(fut)}: {e}')
     except Exception as e:
         print(f'热股并行更新超时: {e}')
+
+    existing_codes = {q.get('code') for q in quotes}
+    unresolved_codes = [c for c in missing_codes if c not in existing_codes]
+    if unresolved_codes and len(quotes) < limit:
+        # 并发超时或上游抖动后，顺序补拉一轮，避免整条行情都为 "--"
+        for code in unresolved_codes:
+            try:
+                q = _fetch_one_network(code)
+                if q and q.get('price') is not None:
+                    quotes.append(q)
+            except Exception as e:
+                print(f'热股顺序补拉失败 {code}: {e}')
 
     if len(quotes) < 4:
         for code in TICKER_POOL:
